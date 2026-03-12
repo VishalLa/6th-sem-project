@@ -1,0 +1,1276 @@
+{
+    "suspicious_accounts": [
+        {
+            "account_id": "ACC00010",
+            "suspicion_score": 98.59,
+            "risk_level": "HIGH",
+            "reasons": [
+                "cycle_centrality(deg=198,size=199)",
+                "fan_out_intensity(out=192)",
+                "layered_shell_member"
+            ],
+            "detected_patterns": [
+                "fan_out",
+                "cycle",
+                "layered_shell"
+            ],
+            "ring_id": "RING_027"
+        },
+        {
+            "account_id": "ACC01173",
+            "suspicion_score": 97.54,
+            "risk_level": "HIGH",
+            "reasons": [
+                "cycle_centrality(deg=31,size=32)",
+                "fan_in_intensity(in=18)",
+                "fan_out_intensity(out=13)",
+                "layered_shell_member"
+            ],
+            "detected_patterns": [
+                "fan_out",
+                "layered_shell",
+                "cycle",
+                "fan_in"
+            ],
+            "ring_id": "RING_045"
+        }
+    ],
+    "fraud_rings": [
+        {
+            "ring_id": "RING_001",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00374",
+                "ACC00229",
+                "ACC00030"
+            ],
+            "risk_score": 70.82
+        },
+        {
+            "ring_id": "RING_002",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01002",
+                "ACC00375",
+                "ACC00240"
+            ],
+            "risk_score": 71.67
+        },
+        {
+            "ring_id": "RING_003",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00017",
+                "ACC01479",
+                "ACC00105"
+            ],
+            "risk_score": 70.51
+        },
+        {
+            "ring_id": "RING_004",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00365",
+                "ACC00849",
+                "ACC00307"
+            ],
+            "risk_score": 70.41
+        },
+        {
+            "ring_id": "RING_005",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01217",
+                "ACC01405",
+                "ACC00936"
+            ],
+            "risk_score": 71.8
+        },
+        {
+            "ring_id": "RING_006",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00564",
+                "ACC01164",
+                "ACC00574"
+            ],
+            "risk_score": 71.34
+        },
+        {
+            "ring_id": "RING_007",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00137",
+                "ACC00796",
+                "ACC00502"
+            ],
+            "risk_score": 71.96
+        },
+        {
+            "ring_id": "RING_008",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00091",
+                "ACC00026",
+                "ACC00054"
+            ],
+            "risk_score": 71.53
+        },
+        {
+            "ring_id": "RING_009",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00779",
+                "ACC00861",
+                "ACC00910"
+            ],
+            "risk_score": 71.27
+        },
+        {
+            "ring_id": "RING_010",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01486",
+                "ACC01298",
+                "ACC01225"
+            ],
+            "risk_score": 72.03
+        },
+        {
+            "ring_id": "RING_011",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00971",
+                "ACC01447",
+                "ACC00104"
+            ],
+            "risk_score": 71.47
+        },
+        {
+            "ring_id": "RING_012",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00642",
+                "ACC01059",
+                "ACC00372"
+            ],
+            "risk_score": 71.49
+        },
+        {
+            "ring_id": "RING_013",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01481",
+                "ACC01275",
+                "ACC00063"
+            ],
+            "risk_score": 71.03
+        },
+        {
+            "ring_id": "RING_014",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00455",
+                "ACC00545",
+                "ACC00826"
+            ],
+            "risk_score": 70.82
+        },
+        {
+            "ring_id": "RING_015",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00892",
+                "ACC00887",
+                "ACC00361"
+            ],
+            "risk_score": 71.33
+        },
+        {
+            "ring_id": "RING_016",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00200",
+                "ACC00592",
+                "ACC01218"
+            ],
+            "risk_score": 70.76
+        },
+        {
+            "ring_id": "RING_017",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00276",
+                "ACC00082",
+                "ACC00747"
+            ],
+            "risk_score": 71.13
+        },
+        {
+            "ring_id": "RING_018",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01172",
+                "ACC00334",
+                "ACC00697"
+            ],
+            "risk_score": 71.83
+        },
+        {
+            "ring_id": "RING_019",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01359",
+                "ACC00256",
+                "ACC01263"
+            ],
+            "risk_score": 71.94
+        },
+        {
+            "ring_id": "RING_020",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00171",
+                "ACC00141",
+                "ACC00570"
+            ],
+            "risk_score": 70.99
+        },
+        {
+            "ring_id": "RING_021",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00852",
+                "ACC01495",
+                "ACC00327"
+            ],
+            "risk_score": 71.75
+        },
+        {
+            "ring_id": "RING_022",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00300",
+                "ACC01151",
+                "ACC01457"
+            ],
+            "risk_score": 71.2
+        },
+        {
+            "ring_id": "RING_023",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00746",
+                "ACC00121",
+                "ACC00164"
+            ],
+            "risk_score": 71.4
+        },
+        {
+            "ring_id": "RING_024",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00215",
+                "ACC00606",
+                "ACC00859"
+            ],
+            "risk_score": 70.36
+        },
+        {
+            "ring_id": "RING_025",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01425",
+                "ACC00657",
+                "ACC00126"
+            ],
+            "risk_score": 71.51
+        },
+        {
+            "ring_id": "RING_026",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00877",
+                "ACC00355",
+                "ACC00473"
+            ],
+            "risk_score": 70.7
+        },
+        {
+            "ring_id": "RING_027",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00535",
+                "ACC00010",
+                "ACC00786"
+            ],
+            "risk_score": 72.42
+        },
+        {
+            "ring_id": "RING_028",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00408",
+                "ACC01234",
+                "ACC01365"
+            ],
+            "risk_score": 71.54
+        },
+        {
+            "ring_id": "RING_029",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01467",
+                "ACC00312",
+                "ACC00283"
+            ],
+            "risk_score": 71.18
+        },
+        {
+            "ring_id": "RING_030",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01077",
+                "ACC00878",
+                "ACC00143"
+            ],
+            "risk_score": 70.82
+        },
+        {
+            "ring_id": "RING_031",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00086",
+                "ACC01426",
+                "ACC01111"
+            ],
+            "risk_score": 71.65
+        },
+        {
+            "ring_id": "RING_032",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00154",
+                "ACC00367",
+                "ACC01375"
+            ],
+            "risk_score": 71.15
+        },
+        {
+            "ring_id": "RING_033",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01309",
+                "ACC00150",
+                "ACC01185"
+            ],
+            "risk_score": 71.3
+        },
+        {
+            "ring_id": "RING_034",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00074",
+                "ACC01142",
+                "ACC00938"
+            ],
+            "risk_score": 70.88
+        },
+        {
+            "ring_id": "RING_035",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00299",
+                "ACC00130",
+                "ACC01108"
+            ],
+            "risk_score": 70.46
+        },
+        {
+            "ring_id": "RING_036",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01100",
+                "ACC00885",
+                "ACC00573"
+            ],
+            "risk_score": 70.79
+        },
+        {
+            "ring_id": "RING_037",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01417",
+                "ACC01084",
+                "ACC00011"
+            ],
+            "risk_score": 71.88
+        },
+        {
+            "ring_id": "RING_038",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01276",
+                "ACC01468",
+                "ACC01021"
+            ],
+            "risk_score": 70.21
+        },
+        {
+            "ring_id": "RING_039",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01324",
+                "ACC00192",
+                "ACC00329"
+            ],
+            "risk_score": 71.66
+        },
+        {
+            "ring_id": "RING_040",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00952",
+                "ACC01133",
+                "ACC00555"
+            ],
+            "risk_score": 71.42
+        },
+        {
+            "ring_id": "RING_041",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00736",
+                "ACC00339",
+                "ACC01126"
+            ],
+            "risk_score": 70.66
+        },
+        {
+            "ring_id": "RING_042",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00532",
+                "ACC01242",
+                "ACC01080"
+            ],
+            "risk_score": 71.72
+        },
+        {
+            "ring_id": "RING_043",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01010",
+                "ACC00401",
+                "ACC00047"
+            ],
+            "risk_score": 71.24
+        },
+        {
+            "ring_id": "RING_044",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01204",
+                "ACC00344",
+                "ACC00284"
+            ],
+            "risk_score": 71.37
+        },
+        {
+            "ring_id": "RING_045",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01173",
+                "ACC00342",
+                "ACC01279"
+            ],
+            "risk_score": 71.98
+        },
+        {
+            "ring_id": "RING_046",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01480",
+                "ACC00523",
+                "ACC01076"
+            ],
+            "risk_score": 71.94
+        },
+        {
+            "ring_id": "RING_047",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00234",
+                "ACC01265",
+                "ACC00034"
+            ],
+            "risk_score": 71.47
+        },
+        {
+            "ring_id": "RING_048",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00078",
+                "ACC00176",
+                "ACC00444"
+            ],
+            "risk_score": 71.26
+        },
+        {
+            "ring_id": "RING_049",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01258",
+                "ACC00903",
+                "ACC00467"
+            ],
+            "risk_score": 71.95
+        },
+        {
+            "ring_id": "RING_050",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00755",
+                "ACC01157",
+                "ACC01053"
+            ],
+            "risk_score": 71.39
+        },
+        {
+            "ring_id": "RING_051",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00647",
+                "ACC00338",
+                "ACC01134"
+            ],
+            "risk_score": 71.65
+        },
+        {
+            "ring_id": "RING_052",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00060",
+                "ACC00083",
+                "ACC01335"
+            ],
+            "risk_score": 71.68
+        },
+        {
+            "ring_id": "RING_053",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01373",
+                "ACC00955",
+                "ACC00922"
+            ],
+            "risk_score": 71.13
+        },
+        {
+            "ring_id": "RING_054",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00206",
+                "ACC01340",
+                "ACC01316"
+            ],
+            "risk_score": 71.66
+        },
+        {
+            "ring_id": "RING_055",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00432",
+                "ACC01334",
+                "ACC01184"
+            ],
+            "risk_score": 71.3
+        },
+        {
+            "ring_id": "RING_056",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00587",
+                "ACC01288",
+                "ACC01183"
+            ],
+            "risk_score": 71.18
+        },
+        {
+            "ring_id": "RING_057",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00994",
+                "ACC01369",
+                "ACC01328"
+            ],
+            "risk_score": 71.39
+        },
+        {
+            "ring_id": "RING_058",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00679",
+                "ACC00114",
+                "ACC00801"
+            ],
+            "risk_score": 71.86
+        },
+        {
+            "ring_id": "RING_059",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01145",
+                "ACC00766",
+                "ACC00149"
+            ],
+            "risk_score": 70.96
+        },
+        {
+            "ring_id": "RING_060",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01071",
+                "ACC00661",
+                "ACC00272"
+            ],
+            "risk_score": 72.04
+        },
+        {
+            "ring_id": "RING_061",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01306",
+                "ACC00101",
+                "ACC01487"
+            ],
+            "risk_score": 70.92
+        },
+        {
+            "ring_id": "RING_062",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01318",
+                "ACC00599",
+                "ACC00067"
+            ],
+            "risk_score": 70.84
+        },
+        {
+            "ring_id": "RING_063",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00959",
+                "ACC00007",
+                "ACC00194"
+            ],
+            "risk_score": 71.0
+        },
+        {
+            "ring_id": "RING_064",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00629",
+                "ACC01402",
+                "ACC00479"
+            ],
+            "risk_score": 71.53
+        },
+        {
+            "ring_id": "RING_065",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01029",
+                "ACC00672",
+                "ACC00379"
+            ],
+            "risk_score": 71.71
+        },
+        {
+            "ring_id": "RING_066",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01302",
+                "ACC00942",
+                "ACC00718"
+            ],
+            "risk_score": 70.36
+        },
+        {
+            "ring_id": "RING_067",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01144",
+                "ACC00231",
+                "ACC01376"
+            ],
+            "risk_score": 71.93
+        },
+        {
+            "ring_id": "RING_068",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00787",
+                "ACC01015",
+                "ACC00981"
+            ],
+            "risk_score": 71.77
+        },
+        {
+            "ring_id": "RING_069",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01032",
+                "ACC01112",
+                "ACC00548"
+            ],
+            "risk_score": 71.1
+        },
+        {
+            "ring_id": "RING_070",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00818",
+                "ACC01168",
+                "ACC00919"
+            ],
+            "risk_score": 71.31
+        },
+        {
+            "ring_id": "RING_071",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00684",
+                "ACC01489",
+                "ACC01284"
+            ],
+            "risk_score": 71.49
+        },
+        {
+            "ring_id": "RING_072",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00543",
+                "ACC00437",
+                "ACC01354"
+            ],
+            "risk_score": 71.35
+        },
+        {
+            "ring_id": "RING_073",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00670",
+                "ACC00788",
+                "ACC00858"
+            ],
+            "risk_score": 71.57
+        },
+        {
+            "ring_id": "RING_074",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00058",
+                "ACC01441",
+                "ACC00831"
+            ],
+            "risk_score": 71.17
+        },
+        {
+            "ring_id": "RING_075",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01209",
+                "ACC00867",
+                "ACC00436"
+            ],
+            "risk_score": 71.39
+        },
+        {
+            "ring_id": "RING_076",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01116",
+                "ACC00336",
+                "ACC00731"
+            ],
+            "risk_score": 70.27
+        },
+        {
+            "ring_id": "RING_077",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00847",
+                "ACC01139",
+                "ACC01055"
+            ],
+            "risk_score": 70.69
+        },
+        {
+            "ring_id": "RING_078",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00251",
+                "ACC00932",
+                "ACC00950"
+            ],
+            "risk_score": 71.63
+        },
+        {
+            "ring_id": "RING_079",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00021",
+                "ACC00419",
+                "ACC00061"
+            ],
+            "risk_score": 71.43
+        },
+        {
+            "ring_id": "RING_080",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01034",
+                "ACC00615",
+                "ACC00216"
+            ],
+            "risk_score": 71.33
+        },
+        {
+            "ring_id": "RING_081",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01383",
+                "ACC01005",
+                "ACC01459"
+            ],
+            "risk_score": 70.57
+        },
+        {
+            "ring_id": "RING_082",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00115",
+                "ACC00848",
+                "ACC00341"
+            ],
+            "risk_score": 71.64
+        },
+        {
+            "ring_id": "RING_083",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01130",
+                "ACC00321",
+                "ACC00578"
+            ],
+            "risk_score": 71.41
+        },
+        {
+            "ring_id": "RING_084",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00064",
+                "ACC00232",
+                "ACC00720"
+            ],
+            "risk_score": 71.05
+        },
+        {
+            "ring_id": "RING_085",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00992",
+                "ACC01250",
+                "ACC01249"
+            ],
+            "risk_score": 71.7
+        },
+        {
+            "ring_id": "RING_086",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01460",
+                "ACC01149",
+                "ACC01453"
+            ],
+            "risk_score": 72.06
+        },
+        {
+            "ring_id": "RING_087",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00383",
+                "ACC00160",
+                "ACC00757"
+            ],
+            "risk_score": 71.12
+        },
+        {
+            "ring_id": "RING_088",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00708",
+                "ACC00219",
+                "ACC00871"
+            ],
+            "risk_score": 70.43
+        },
+        {
+            "ring_id": "RING_089",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01097",
+                "ACC00643",
+                "ACC01458"
+            ],
+            "risk_score": 71.19
+        },
+        {
+            "ring_id": "RING_090",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00652",
+                "ACC00090",
+                "ACC01060"
+            ],
+            "risk_score": 71.68
+        },
+        {
+            "ring_id": "RING_091",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00356",
+                "ACC00125",
+                "ACC00065"
+            ],
+            "risk_score": 71.65
+        },
+        {
+            "ring_id": "RING_092",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00368",
+                "ACC00015",
+                "ACC00308"
+            ],
+            "risk_score": 71.33
+        },
+        {
+            "ring_id": "RING_093",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00915",
+                "ACC00315",
+                "ACC00036"
+            ],
+            "risk_score": 71.44
+        },
+        {
+            "ring_id": "RING_094",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00798",
+                "ACC00976",
+                "ACC00497"
+            ],
+            "risk_score": 71.48
+        },
+        {
+            "ring_id": "RING_095",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00111",
+                "ACC00223",
+                "ACC01105"
+            ],
+            "risk_score": 71.09
+        },
+        {
+            "ring_id": "RING_096",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00771",
+                "ACC00527",
+                "ACC00377"
+            ],
+            "risk_score": 70.88
+        },
+        {
+            "ring_id": "RING_097",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00238",
+                "ACC00481",
+                "ACC01413"
+            ],
+            "risk_score": 71.6
+        },
+        {
+            "ring_id": "RING_098",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01063",
+                "ACC00358",
+                "ACC01291"
+            ],
+            "risk_score": 71.17
+        },
+        {
+            "ring_id": "RING_099",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00911",
+                "ACC00838",
+                "ACC00886"
+            ],
+            "risk_score": 70.61
+        },
+        {
+            "ring_id": "RING_100",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01179",
+                "ACC00569",
+                "ACC00677"
+            ],
+            "risk_score": 71.25
+        },
+        {
+            "ring_id": "RING_101",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01472",
+                "ACC00654",
+                "ACC00496"
+            ],
+            "risk_score": 71.8
+        },
+        {
+            "ring_id": "RING_102",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00745",
+                "ACC00612",
+                "ACC00819"
+            ],
+            "risk_score": 71.46
+        },
+        {
+            "ring_id": "RING_103",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00446",
+                "ACC01166",
+                "ACC00857"
+            ],
+            "risk_score": 71.23
+        },
+        {
+            "ring_id": "RING_104",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00208",
+                "ACC01406",
+                "ACC00807"
+            ],
+            "risk_score": 70.79
+        },
+        {
+            "ring_id": "RING_105",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00196",
+                "ACC00197",
+                "ACC00726"
+            ],
+            "risk_score": 71.25
+        },
+        {
+            "ring_id": "RING_106",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00749",
+                "ACC00722",
+                "ACC00751"
+            ],
+            "risk_score": 71.24
+        },
+        {
+            "ring_id": "RING_107",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00186",
+                "ACC00466",
+                "ACC00332"
+            ],
+            "risk_score": 71.38
+        },
+        {
+            "ring_id": "RING_108",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC00049",
+                "ACC00715",
+                "ACC00457"
+            ],
+            "risk_score": 70.97
+        },
+        {
+            "ring_id": "RING_109",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01414",
+                "ACC00577",
+                "ACC01014"
+            ],
+            "risk_score": 70.93
+        },
+        {
+            "ring_id": "RING_110",
+            "pattern_type": "cycle_length_3",
+            "member_accounts": [
+                "ACC01293",
+                "ACC00931",
+                "ACC01427"
+            ],
+            "risk_score": 71.65
+        },
+        {
+            "ring_id": "RING_111",
+            "pattern_type": "layered_shell",
+            "member_accounts": [
+                "ACC00999",
+                "ACC00998",
+                "ACC00166"
+            ],
+            "risk_score": 69.79
+        },
+        {
+            "ring_id": "RING_112",
+            "pattern_type": "layered_shell",
+            "member_accounts": [
+                "ACC00833",
+                "ACC01320",
+                "ACC00525"
+            ],
+            "risk_score": 71.19
+        },
+        {
+            "ring_id": "RING_113",
+            "pattern_type": "layered_shell",
+            "member_accounts": [
+                "ACC01117",
+                "ACC01028",
+                "ACC00433"
+            ],
+            "risk_score": 69.78
+        },
+        {
+            "ring_id": "RING_114",
+            "pattern_type": "layered_shell",
+            "member_accounts": [
+                "ACC00494",
+                "ACC00989",
+                "ACC00119"
+            ],
+            "risk_score": 70.02
+        },
+        {
+            "ring_id": "RING_115",
+            "pattern_type": "layered_shell",
+            "member_accounts": [
+                "ACC00262",
+                "ACC01224",
+                "ACC01211"
+            ],
+            "risk_score": 70.03
+        },
+        {
+            "ring_id": "RING_116",
+            "pattern_type": "layered_shell",
+            "member_accounts": [
+                "ACC00252",
+                "ACC00683",
+                "ACC00946"
+            ],
+            "risk_score": 70.28
+        },
+        {
+            "ring_id": "RING_117",
+            "pattern_type": "layered_shell",
+            "member_accounts": [
+                "ACC00274",
+                "ACC00452",
+                "ACC00412"
+            ],
+            "risk_score": 70.78
+        },
+        {
+            "ring_id": "RING_118",
+            "pattern_type": "layered_shell",
+            "member_accounts": [
+                "ACC00140",
+                "ACC00324",
+                "ACC01131"
+            ],
+            "risk_score": 71.12
+        },
+        {
+            "ring_id": "RING_119",
+            "pattern_type": "layered_shell",
+            "member_accounts": [
+                "ACC01434",
+                "ACC00388",
+                "ACC00363"
+            ],
+            "risk_score": 71.2
+        },
+        {
+            "ring_id": "RING_120",
+            "pattern_type": "layered_shell",
+            "member_accounts": [
+                "ACC00397",
+                "ACC00907",
+                "ACC00609"
+            ],
+            "risk_score": 70.63
+        },
+        {
+            "ring_id": "RING_121",
+            "pattern_type": "layered_shell",
+            "member_accounts": [
+                "ACC00610",
+                "ACC01303",
+                "ACC00182"
+            ],
+            "risk_score": 70.29
+        },
+        {
+            "ring_id": "RING_122",
+            "pattern_type": "layered_shell",
+            "member_accounts": [
+                "ACC01474",
+                "ACC01491",
+                "ACC01092"
+            ],
+            "risk_score": 70.51
+        },
+        {
+            "ring_id": "RING_123",
+            "pattern_type": "layered_shell",
+            "member_accounts": [
+                "ACC01057",
+                "ACC00260",
+                "ACC00510"
+            ],
+            "risk_score": 71.0
+        }
+    ],
+    "summary": {
+        "total_accounts_analyzed": 1500,
+        "suspicious_accounts_flagged": 2,
+        "fraud_rings_detected": 123,
+        "processing_time_seconds": 0.035
+    }
+}

@@ -1,0 +1,47 @@
+:root {
+  --bg:           #07071a;
+  --bg2:          #0d0d2b;
+  --surface:      rgba(255,255,255,0.04);
+  --surface2:     rgba(255,255,255,0.07);
+  --border:       rgba(255,255,255,0.08);
+  --purple:       #7c3aed;
+  --purple-light: #a855f7;
+  --purple-glow:  rgba(124,58,237,0.35);
+  --accent:       #c084fc;
+  --text:         #e2e8f0;
+  --muted:        #94a3b8;
+  --critical:     #ef4444;
+  --high:         #f97316;
+  --medium:       #eab308;
+  --low:          #22c55e;
+  --info:         #38bdf8;
+  --font-mono:    'Space Mono', monospace;
+  --font-sans:    'DM Sans', sans-serif;
+}
+
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+a { color:inherit; text-decoration:none; }
+button { font-family: var(--font-sans); cursor:pointer; }
+
+::-webkit-scrollbar { width:5px; height:5px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--purple); border-radius:3px; }
+
+/* Router transitions */
+.fade-enter-active,
+.fade-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
+.fade-enter-from   { opacity:0; transform:translateY(8px); }
+.fade-leave-to     { opacity:0; transform:translateY(-8px); }
+
+@keyframes spin    { to { transform: rotate(360deg); } }
+@keyframes pulse   { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.4)} }
+@keyframes fadeUp  { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }

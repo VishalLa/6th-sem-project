@@ -1,0 +1,326 @@
+# 💸 Money Muling Detection System
+
+### Graph-Based Suspicious Transaction Detection using FastAPI & Network Analysis
+
+The **Money Muling Detection System** is a backend-driven analytical platform designed to identify suspicious financial transaction behavior that may indicate **money muling activity**.
+
+The system analyzes transaction records uploaded as CSV files and uses graph-based modeling, statistical analysis, and risk scoring techniques to detect potentially fraudulent accounts.
+
+---
+
+## 📌 Features
+
+* CSV transaction upload (single or multiple files)
+* FastAPI backend detection engine
+* Transaction graph construction
+* Risk scoring using statistical features
+* Suspicious account identification
+* JSON result generation
+
+---
+
+## ❓ What is Money Muling?
+
+Money muling is a financial crime in which an individual transfers illegally obtained money between accounts to hide the original source of funds.
+
+Criminal networks typically use multiple intermediary accounts (called **mules**) to:
+
+* Break traceability
+* Launder stolen money
+* Move funds rapidly across accounts
+
+Traditional rule-based fraud detection fails here because criminals use **relationships between accounts**.
+Therefore, this project applies **graph/network analysis**.
+
+---
+
+## 🎯 Objectives
+
+* Process large transaction datasets automatically
+* Convert financial transactions into a graph network
+* Detect abnormal fund flow
+* Score accounts by suspicious behavior
+* Identify mule chains and intermediary accounts
+* Provide API-based detection results
+
+---
+
+## 🏗️ System Architecture
+
+The system follows a **3-Layer Architecture**.
+
+### 1️⃣ Frontend (Vue.js)
+
+* Upload CSV file
+* Upload folder containing CSV files
+* Trigger detection
+* View results
+
+### 2️⃣ Backend (FastAPI)
+
+* File handling
+* CSV validation
+* Data preprocessing
+* Graph building
+* Risk computation
+
+### 3️⃣ Detection Engine
+
+* Feature extraction
+* Pattern detection
+* Suspicious scoring
+
+---
+
+### Architecture Flow
+
+```
+User Upload
+     ↓
+FastAPI Server
+     ↓
+Data Processing
+     ↓
+Graph Construction
+     ↓
+Risk Engine
+     ↓
+Detection Results
+```
+
+---
+
+## ⚙️ Technologies Used
+
+### Backend
+
+* Python
+* FastAPI
+* Pandas
+* NumPy
+* NetworkX
+
+### Frontend
+
+* Vue.js
+* JavaScript
+* Axios
+
+### Data Processing
+
+* CSV parsing
+* Time-window aggregation
+* Graph modeling
+
+---
+
+## 📂 Repository Structure
+
+```
+Money_muling/
+│
+├── backend/
+│   ├── routers/
+│   ├── main_engine/
+│   ├── build_graph.py
+│   ├── detect.py
+│   └── utils.py
+│
+├── frontend/
+├── requirements.txt
+└── README.md
+```
+
+---
+
+## 🚀 Installation
+
+### 1. Clone Repository
+
+```
+git clone https://github.com/VishalLa/Money_muling.git
+cd Money_muling
+```
+
+### 2. Create Virtual Environment
+
+```
+python -m venv venv
+```
+
+Activate:
+
+**Windows**
+
+```
+venv\Scripts\activate
+```
+
+**Linux / Mac**
+
+```
+source venv/bin/activate
+```
+
+### 3. Install Dependencies
+
+```
+pip install -r requirements.txt
+```
+
+### 4. Run Server
+
+```
+uvicorn backend.main:app --reload
+```
+
+Server:
+
+```
+http://127.0.0.1:8000
+```
+
+Swagger API Docs:
+
+```
+http://127.0.0.1:8000/docs
+```
+
+---
+
+## 📤 API Endpoint
+
+### POST `/detect`
+
+Accepts:
+
+* Single CSV file
+* Multiple CSV files
+
+Returns:
+
+* Suspicious accounts
+* Risk scores
+* Transaction summary
+
+---
+
+## 📄 Expected CSV Format
+
+| sender | receiver | amount | timestamp           |
+| ------ | -------- | ------ | ------------------- |
+| A101   | B302     | 15000  | 2024-01-01 12:30:00 |
+
+**Field Description**
+
+* `sender` → account sending money
+* `receiver` → account receiving money
+* `amount` → transaction amount
+* `timestamp` → transaction date & time
+
+---
+
+## 🔍 Detection Methodology
+
+### 1. Data Validation
+
+* Verify CSV structure
+* Remove invalid records
+
+### 2. Data Cleaning
+
+* Handle missing values
+* Convert timestamps
+* Normalize data types
+
+### 3. Time Window Analysis
+
+Transactions are grouped into rolling windows to detect rapid transfers.
+
+### 4. Graph Construction
+
+Each account becomes a **node** and each transaction becomes a **directed edge**.
+
+```
+Node  = Account
+Edge  = Transaction
+Weight = Amount
+```
+
+### 5. Feature Engineering
+
+For each account:
+
+* Incoming transaction count
+* Outgoing transaction count
+* Total inflow
+* Total outflow
+* Flow ratio
+* Transaction frequency
+
+### 6. Risk Scoring
+
+Risk score is calculated using a sigmoid transformation:
+
+```
+Risk Score = 1 / (1 + e^(-x))
+```
+
+Higher score ⇒ Higher suspicion.
+
+---
+
+## 🚨 Suspicious Patterns Detected
+
+### Circular Transfer
+
+```
+A → B → C → A
+```
+
+### Layering Chain
+
+```
+A → B → C → D → E
+```
+
+### Hub Account
+
+```
+      B
+      ↑
+A →   X   → C
+      ↓
+      D
+```
+
+---
+
+## 📊 Output
+
+The API returns JSON containing:
+
+* Suspicious accounts
+* Risk scores
+* Transaction statistics
+
+---
+
+## 📈 Scalability
+
+Designed to handle:
+
+* 10,000–50,000+ transactions
+* Modular processing pipeline
+* Extendable detection engine
+
+---
+
+## 🔮 Future Improvements
+
+* Machine learning anomaly detection
+* Real-time transaction monitoring
+* PostgreSQL database integration
+* Authentication & user accounts
+* Visual analytics dashboard
+* Cloud deployment
