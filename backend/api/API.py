@@ -4,7 +4,7 @@ from fastapi import (
     UploadFile
 )
 from typing import List
-from .main_engine import Detect, DownLoad_JSON
+from .run_pipeline import Detect, DownLoad_JSON
 
 route = APIRouter(tags=["input"])
 

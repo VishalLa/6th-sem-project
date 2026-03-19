@@ -58,6 +58,7 @@ class Detect:
 
         return output_dic
 
+
     async def run_detction_pipeline(
         self,
         input_dict: dict[str, Graph],
@@ -127,6 +128,7 @@ class DownLoad_JSON:
             }
         except Exception as e:
             return {"files": [], "error": str(e)}
+
 
     async def download_file(self, file_name: str):
 
