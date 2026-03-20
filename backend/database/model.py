@@ -16,7 +16,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from .base import Base
-from ..core.security import hash_password, verify_password
+from core.security import hash_password, verify_password
 
 
 class User(Base):

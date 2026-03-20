@@ -232,7 +232,7 @@ class MainEngine:
         self._velocities = df.groupby("sender")["velocity_mins"].mean()
 
 
-    def detect_cycles(self, max_length: int = 8) -> list[dict]:
+    def detect_cycles(self, max_length : int = 8) -> list[dict]:
 
         """
         Detects circular transactions where money returns to the original sender.
@@ -252,14 +252,17 @@ class MainEngine:
         max_length = min(max_length, 8)
         
         cycles = []
+
+        if len(self._accounts) > 1000:
+            max_length = min(max_length, 5)
         
         if max_length >= 3:
             cycles.extend(self._detect_cycles_length_3())
         
-        if max_length > 3:
+        if max_length > 3 and len(cycles) < 10000:
             cycles.extend(self._detect_cycles_general(max_length))
         
-        return cycles
+        return cycles[:10000]
     
 
     def _detect_cycles_length_3(self) -> list[dict]:
@@ -300,7 +303,6 @@ class MainEngine:
     
 
     def _detect_cycles_general(self, max_length: int) -> list[dict]:
-        
         """
         General cycle detection using Breadth-First Search for cycle lengths 4 to max_length.
         Finds ALL cycles from length 4 up to max_length (avoids duplicating length-3 cycles).
@@ -310,35 +312,50 @@ class MainEngine:
         Returns:
             list[dict]: List of cycles found.
         """
-
         cycles = []
-        G = self._sg
         seen_cycles = set()
+        max_cycles = 5000
         
-        for start_node in G.nodes:
-            # BFS to find cycles
-            queue = deque([(start_node, [start_node])])
-            
-            while queue:
-                node, path = queue.popleft()
+        # Sample nodes if graph is very large
+        nodes_to_check = list(self._sg.nodes())
+        if len(self._accounts) > 500:
+            import random
+            nodes_to_check = random.sample(nodes_to_check, min(500, len(self._accounts)))
+        
+        for start_node in nodes_to_check:
+            if len(cycles) >= max_cycles:
+                break
                 
-                if len(path) > max_length:
+            queue = deque([(start_node, [start_node])])
+            visited_paths = set()  # Track visited paths to avoid duplicates
+            
+            while queue and len(cycles) < max_cycles:
+                node, path = queue.popleft()
+                path_len = len(path)
+                
+                if path_len > max_length:
                     continue
                 
                 for neighbor in self._successors.get(node, []):
-
-                    if neighbor == start_node and len(path) >= 3:
-                        # Found a cycle
+                    # Check if this completes a cycle back to start
+                    if neighbor == start_node and path_len >= 4:
                         cycle_key = tuple(sorted(path))
                         if cycle_key not in seen_cycles:
                             seen_cycles.add(cycle_key)
                             cycles.append({
                                 "accounts": path,
-                                "pattern": f"cycle_length_{len(path)}"
+                                "pattern": f"cycle_length_{path_len}"
                             })
-
-                    elif neighbor not in path and len(path) < max_length:
-                        queue.append((neighbor, path + [neighbor]))
+                    
+                    # Continue exploring if not in current path
+                    elif neighbor not in path and path_len < max_length:
+                        new_path = path + [neighbor]
+                        path_signature = (neighbor, path_len + 1)
+                        
+                        # Skip if we've explored this node at this depth from this start
+                        if path_signature not in visited_paths:
+                            visited_paths.add(path_signature)
+                            queue.append((neighbor, new_path))
         
         return cycles
 
@@ -357,18 +374,18 @@ class MainEngine:
         """
 
         suspicious = []
-        G = self._sg
 
-        for node in G.nodes:
-            in_d  = G.in_degree(node)
-            out_d = G.out_degree(node)
+        high_in_degree = self._in_deg >= threshold
+        high_out_degree = self._out_deg >= threshold
+        
+        for i, acc in enumerate(self._accounts):
 
-            if in_d >= threshold:
-                suspicious.append({"account": node, "pattern": "fan_in"})
+            if high_in_degree[i]:
+                suspicious.append({"account": acc, "pattern": "fan_in"})
 
-            if out_d >= threshold:
-                suspicious.append({"account": node, "pattern": "fan_out"})
-
+            if high_out_degree[i]:
+                suspicious.append({"account": acc, "pattern": "fan_out"})
+        
         return suspicious
 
 
@@ -383,35 +400,34 @@ class MainEngine:
         """
 
         suspicious_chains = []
-        G = self._sg
         succs = self._successors
         seen_sets = set()
         MAX_PATHS = 500
+        MAX_TOTAL = 10000
 
-        for node in G.nodes:
+        for node in self._sg.nodes:
+            if len(suspicious_chains) >= MAX_TOTAL:
+                break
+                
             for neighbor in succs.get(node, []):
-
-                if G.out_degree(neighbor) > 2:
+                if self._sg.out_degree(neighbor) > 2:
                     continue
+                
                 count = 0
-
                 for next_node in succs.get(neighbor, []):
                     if next_node == node or count >= MAX_PATHS:
-                        continue
-
-                    path = [node, neighbor, next_node]
-                    key = frozenset(path)
-
+                        break
+                    
+                    key = frozenset([node, neighbor, next_node])
                     if key not in seen_sets:
                         seen_sets.add(key)
                         suspicious_chains.append({
-                            "accounts": path,
+                            "accounts": [node, neighbor, next_node],
                             "pattern": "layered_shell"
                         })
-
                         count += 1
-
-        return suspicious_chains
+        
+        return suspicious_chains[:MAX_TOTAL]
     
 
     def detect_cross_border_chains(self, min_countries: int = 3) -> list[dict]:
@@ -429,23 +445,29 @@ class MainEngine:
         suspicious = []
         df = self._df
         
+        unique_senders = df["sender"].unique()
+
         # Group by sender to find cross-border patterns
-        for sender in df["sender"].unique():
-            sender_txns = df[df["sender"] == sender]
-            
-            # Get unique countries involved
+        for sender in unique_senders:
             countries = set()
+            
+            # Get sender's countries
             if sender in self._s_countries:
                 countries.update(self._s_countries[sender])
             if sender in self._r_countries:
                 countries.update(self._r_countries[sender])
             
-            # Check receivers' countries
-            for receiver in sender_txns["receiver"].unique():
+            # Check receiver countries (optimized)
+            sender_receivers = df[df["sender"] == sender]["receiver"].unique()
+            for receiver in sender_receivers:
+
                 if receiver in self._s_countries:
                     countries.update(self._s_countries[receiver])
                 if receiver in self._r_countries:
                     countries.update(self._r_countries[receiver])
+                
+                if len(countries) >= min_countries:
+                    break  # Early exit
             
             if len(countries) >= min_countries:
                 suspicious.append({
@@ -470,20 +492,17 @@ class MainEngine:
             list[dict]: List of unverified clusters containing member accounts.
         """
 
-        suspicious = []
-        df = self._df
+        unverified_statuses = {"Pending", "None", "Unknown", None}
+        unverified_accounts = {
+            acc for acc in self._accounts
+            if self._s_kyc.get(acc, "Unknown") in unverified_statuses
+        }
         
-        # Find unverified or pending KYC accounts
-        unverified_accounts = set()
-
-        for acc in self._accounts:
-            kyc_status = self._s_kyc.get(acc, "Unknown")
-
-            if kyc_status in ["Pending", "None", "Unknown", None]:
-                unverified_accounts.add(acc)
+        if not unverified_accounts:
+            return []
         
-        # Find connected components among unverified accounts
         unverified_subgraph = self._sg.subgraph(unverified_accounts)
+        suspicious = []
         
         for component in nx.weakly_connected_components(unverified_subgraph):
 
@@ -512,13 +531,12 @@ class MainEngine:
         suspicious = []
         df = self._df
         
-        for sender in df["sender"].unique():
-            sender_txns = df[df["sender"] == sender]
-            total_txns = len(sender_txns)
-            
-            if total_txns < 3:  # Need minimum transactions
-                continue
-            
+        sender_counts = df.groupby("sender", observed=True).size()
+        valid_senders = sender_counts[sender_counts >= 3].index
+        
+        for sender in valid_senders:
+
+            total_txns = sender_counts[sender]
             round_count = self._round_amounts.get(sender, 0)
             round_ratio = round_count / total_txns
             
@@ -527,7 +545,7 @@ class MainEngine:
                     "account": sender,
                     "pattern": "round_amount_pattern",
                     "round_ratio": round(round_ratio, 2),
-                    "total_txns": total_txns,
+                    "total_txns": int(total_txns),
                     "round_txns": int(round_count)
                 })
         
@@ -547,20 +565,17 @@ class MainEngine:
         """
 
         suspicious = []
-        df = self._df
-        
-        # Group by device_id
         device_accounts = defaultdict(set)
         
-        for sender in df["sender"].unique():
-            if sender in self._s_devices:
-                devices = self._s_devices[sender]
+        for sender in self._df["sender"].unique():
 
-                for device in devices:
+            if sender in self._s_devices:
+                for device in self._s_devices[sender]:
                     if pd.notna(device):
                         device_accounts[device].add(sender)
         
         for device, accounts in device_accounts.items():
+
             if len(accounts) >= min_accounts:
                 suspicious.append({
                     "device_id": device,
@@ -587,20 +602,20 @@ class MainEngine:
 
         suspicious = []
         
+        # Filter accounts that meet age criteria first
         for sender in self._accounts:
-            acct_age = self._acct_ages.get(sender, None)
-            if acct_age is None or pd.isna(acct_age):
+            acct_age = self._acct_ages.get(sender)
+            if acct_age is None or pd.isna(acct_age) or acct_age > max_age_days:
                 continue
             
-            if acct_age <= max_age_days:
-                txn_count = self._s_count.get(sender, 0)
-                if txn_count >= min_txns:
-                    suspicious.append({
-                        "account": sender,
-                        "pattern": "new_account_burst",
-                        "account_age_days": int(acct_age),
-                        "transaction_count": int(txn_count)
-                    })
+            txn_count = self._s_count.get(sender, 0)
+            if txn_count >= min_txns:
+                suspicious.append({
+                    "account": sender,
+                    "pattern": "new_account_burst",
+                    "account_age_days": int(acct_age),
+                    "transaction_count": int(txn_count)
+                })
         
         return suspicious
     
@@ -625,16 +640,15 @@ class MainEngine:
             if avg_velocity is None or pd.isna(avg_velocity):
                 continue
             
-            if avg_velocity <= threshold_mins:
-                txn_count = self._s_count.get(sender, 0)
+            txn_count = self._s_count.get(sender, 0)
 
-                if txn_count >= 5:  # Need multiple transactions
-                    suspicious.append({
-                        "account": sender,
-                        "pattern": "velocity_spike",
-                        "avg_velocity_mins": round(float(avg_velocity), 2),
-                        "transaction_count": int(txn_count)
-                    })
+            if txn_count >= 5:
+                suspicious.append({
+                    "account": sender,
+                    "pattern": "velocity_spike",
+                    "avg_velocity_mins": round(float(avg_velocity), 2),
+                    "transaction_count": int(txn_count)
+                })
         
         return suspicious
     
@@ -651,40 +665,55 @@ class MainEngine:
             list[dict]: Chains of accounts exhibiting rapid temporal movement.
         """
 
-        suspicious = []
         df = self._df
         time_window_ns = time_window_hours * 3600 * 1e9
-        seen_chains = set()
         
-        # Find chains of transactions within time window
+        suspicious = []
+        seen_chains = set()
+        max_chains = 5000
+        
+        # Build receiver lookup once
+        receiver_groups = df.groupby("receiver", observed=True)
+        
         for idx, row in df.iterrows():
+            if len(suspicious) >= max_chains:
+                break
+            
             sender = row["sender"]
             receiver = row["receiver"]
             timestamp = row["ts_ns"]
             
-            # Check if receiver quickly sends to another account
-            receiver_txns: pd.DataFrame = df[
-                (df["sender"] == receiver) & 
-                (df["ts_ns"] >= timestamp) & 
-                (df["ts_ns"] <= timestamp + time_window_ns)
-            ]
+            # Get transactions where receiver is the sender
+            if receiver not in receiver_groups.groups:
+                continue
             
-            if len(receiver_txns) > 0:
-                for _, next_txn in receiver_txns.iterrows():
-
-                    time_diff_hours = (next_txn["ts_ns"] - timestamp) / (3600 * 1e9)
-                    chain_key = tuple(sorted([sender, receiver, next_txn["receiver"]]))
+            receiver_txns = df.loc[receiver_groups.groups[receiver]]
+            receiver_txns = receiver_txns[receiver_txns["sender"] == receiver]
+            
+            # Filter by time window
+            time_mask = (
+                (receiver_txns["ts_ns"] >= timestamp) & 
+                (receiver_txns["ts_ns"] <= timestamp + time_window_ns)
+            )
+            matching_txns = receiver_txns[time_mask]
+            
+            for _, next_txn in matching_txns.iterrows():
+                time_diff_hours = (next_txn["ts_ns"] - timestamp) / (3600 * 1e9)
+                chain_key = tuple(sorted([sender, receiver, next_txn["receiver"]]))
+                
+                if chain_key not in seen_chains:
+                    seen_chains.add(chain_key)
+                    suspicious.append({
+                        "accounts": [sender, receiver, next_txn["receiver"]],
+                        "pattern": "rapid_movement",
+                        "time_diff_hours": round(float(time_diff_hours), 2)
+                    })
                     
-                    if chain_key not in seen_chains:
-                        seen_chains.add(chain_key)
-                        suspicious.append({
-                            "accounts": [sender, receiver, next_txn["receiver"]],
-                            "pattern": "rapid_movement",
-                            "time_diff_hours": round(float(time_diff_hours), 2)
-                        })
+                    if len(suspicious) >= max_chains:
+                        break
         
         return suspicious
-
+    
 
     def compute_scores(
         self,

@@ -9,7 +9,7 @@ from typing import List, Dict, Optional
 from sentence_transformers import SentenceTransformer
 from langchain.embeddings.base import Embeddings 
 
-from ..core.config import vector_settings, settings
+from core.config import vector_settings, settings
 
 
 logger = logging.getLogger(__name__)
@@ -45,27 +45,27 @@ class CPUEmbeddings(Embeddings):
         # Determine device
         if training_mode:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            print(f"🚀 Training mode: Using {device.upper()}")
+            # print(f"🚀 Training mode: Using {device.upper()}")
             logger.info(f"Training mode initialized. Using device: {device.upper()}")
         else:
             device = 'cpu'
-            print(f"📦 Deployment mode: Using CPU")
+            # print(f"📦 Deployment mode: Using CPU")
             logger.info("Deployment mode initialized. Forced CPU usage.")
 
         
         # Load or download model
         if os.path.exists(os.path.join(self.model_path, "config.json")):
-            print(f"Loading model from {self.model_path}")
+            # print(f"Loading model from {self.model_path}")
             self.model = SentenceTransformer(self.model_path, device=device)
         else:
-            print(f"Downloading model {self.model_name}")
+            # print(f"Downloading model {self.model_name}")
             logger.info(f"Loading existing model from {self.model_path}")
             self.model = SentenceTransformer(
                 model_name_or_path=self.model_name, 
                 device=device
             )
             self.model.save(self.model_path)
-            print(f"Model saved to {self.model_path}")
+            # print(f"Model saved to {self.model_path}")
             logger.info(f"Successfully downloaded and saved model to {self.model_path}")
 
 
@@ -86,8 +86,8 @@ class CPUEmbeddings(Embeddings):
                 return cache
             
             except (json.JSONDecodeError, IOError) as e:
-                print(f"⚠️ Cache file corrupted or unreadable: {e}")
-                print("   Starting with empty cache")
+                # print(f"⚠️ Cache file corrupted or unreadable: {e}")
+                # print("   Starting with empty cache")
                 logger.warning(f"Cache file corrupted or unreadable: {e}. Starting with an empty cache.")
                 return {}
 
@@ -104,11 +104,11 @@ class CPUEmbeddings(Embeddings):
             with open(self.cache_file, 'w', encoding='utf-8') as f:
                 json.dump(self.cache, f, ensure_ascii=False, indent=2)
 
-            print(f"💾 Cache saved with {len(self.cache)} entries")
+            # print(f"💾 Cache saved with {len(self.cache)} entries")
             logger.debug(f"Cache saved successfully to {self.cache_file} with {len(self.cache)} entries.")
 
         except IOError as e:
-            print(f"❌ Failed to save cache: {e}")
+            # print(f"❌ Failed to save cache: {e}")
             logger.error(f"Failed to save cache to {self.cache_file}: {e}")
 
     
@@ -140,14 +140,14 @@ class CPUEmbeddings(Embeddings):
                 new_indices.append(i)
 
         if new_texts:
-            print(f"🔄 Computing embeddings for {len(new_texts)} new documents...")
+            # print(f"🔄 Computing embeddings for {len(new_texts)} new documents...")
             logger.info(f"Computing fresh embeddings for {len(new_texts)} new documents...")
             
             new_embeddings = self.model.encode(
                 new_texts, 
                 normalize_embeddings=True,
                 show_progress_bar=len(new_texts) > 10,
-                convert_to_numpy=False
+                convert_to_numpy=True
             )
             
             # Convert to list if tensor/numpy
@@ -161,10 +161,10 @@ class CPUEmbeddings(Embeddings):
             
             # Save cache after computing new embeddings
             self._save_cache()
-            print(f"✅ Added {len(new_texts)} embeddings to cache")
+            # print(f"✅ Added {len(new_texts)} embeddings to cache")
             logger.info(f"Successfully added {len(new_texts)} new embeddings to cache.")
         else:
-            print(f"✓ All {len(texts)} documents found in cache")
+            # print(f"✓ All {len(texts)} documents found in cache")
             logger.debug(f"All {len(texts)} requested documents were retrieved from cache.")
         
         return embeddings
@@ -192,7 +192,7 @@ class CPUEmbeddings(Embeddings):
         embedding = self.model.encode(
             [text], 
             normalize_embeddings=True,
-            convert_to_numpy=False
+            convert_to_numpy=True
         )[0]
         
         # Convert to list if needed
@@ -219,7 +219,7 @@ class CPUEmbeddings(Embeddings):
             except OSError as e:
                 logger.error(f"Error deleting cache file: {e}")
                 
-        print("🗑️ Cache cleared")
+        # print("🗑️ Cache cleared")
         logger.info("In-memory cache cleared.")
 
 

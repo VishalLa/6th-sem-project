@@ -5,8 +5,8 @@ from fastapi import (
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select 
-from ..database.model import User
-from ..schema.user import UserCreate
+from database.model import User
+from schema.user import UserCreate
 
 
 class UserService:
@@ -14,6 +14,20 @@ class UserService:
         self.db = db 
 
     async def create_new_user_(self, payload: UserCreate) -> User:
+
+        """
+        Create a new user account.
+        
+        Args:
+            payload: User creation data
+            
+        Returns:
+            Created user object
+            
+        Raises:
+            HTTPException: If user already exists or creation fails
+        """
+
         query = select(User).where(User.email_id == payload.email_id)
 
         result = await self.db.execute(query) 
@@ -37,6 +51,8 @@ class UserService:
         try:
             await self.db.commit()
             await self.db.refresh(new_user)
+
+            return new_user
         except Exception as e:
             await self.db.rollback()
             raise HTTPException(

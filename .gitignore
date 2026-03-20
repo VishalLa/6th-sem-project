@@ -26,3 +26,15 @@ test.py
 
 /data
 data/
+
+/db 
+db/
+
+/output
+output/
+
+/cache 
+cache/
+
+/faiss_store
+faiss_store/
