@@ -38,3 +38,6 @@ cache/
 
 /faiss_store
 faiss_store/
+
+/models 
+models/
