@@ -11,9 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.session import get_db 
 from database.model import User 
+
 from service.download import DownLoad_JSON 
 from service.ingestion import DataIngestionService 
 from service.run_pipeline import Detect
+
 from auth.deps import get_current_user 
 from core.helper import convert_numpy_types
 
@@ -292,96 +294,6 @@ async def get_my_fraud_rings(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve fraud rings: {str(e)}"
-        )
-
-
-
-@router.get(
-    "/vector-index/stats",
-    status_code=status.HTTP_200_OK,
-    tags=["Semantic Search"]
-)
-async def get_my_index_stats(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Get statistics about your FAISS vector index.
-    Shows total documents, uploads, and breakdown by type.
-    """
-    try:
-        service = DataIngestionService(db)
-        
-        stats = await service.get_tenant_index_stats(current_user.user_id)
-        
-        if stats is None:
-            return {
-                "status": "success",
-                "tenant_id": current_user.user_id,
-                "message": "No vector index found. Upload data with embeddings enabled to create one.",
-                "has_index": False
-            }
-        
-        return {
-            "status": "success",
-            **stats,
-            "has_index": True
-        }
-    
-    except AttributeError:
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Vector indexing not available. Enable embeddings during upload."
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get index stats: {str(e)}"
-        )
-
-
-@router.delete(
-    "/vector-index",
-    status_code=status.HTTP_200_OK,
-    tags=["Semantic Search"]
-)
-async def delete_my_index(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Delete your entire FAISS vector index.
-    This will remove all embeddings but not the database records.
-    """
-    try:
-        service = DataIngestionService(db)
-        
-        success = await service.delete_tenant_index(current_user.user_id)
-        
-        if success:
-            return {
-                "status": "success",
-                "tenant_id": current_user.user_id,
-                "message": "Vector index deleted successfully"
-            }
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to delete vector index"
-            )
-    
-    except AttributeError:
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Vector indexing not available."
-        )
-    except HTTPException:
-        raise
-    
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete index: {str(e)}"
         )
 
 

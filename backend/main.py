@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.routes import router as api_router 
 from api.auth import router as auth_router 
 from api.user import router as user_router
+from api.chatbot_route import router as chatbout_router
 
 
 def init_db():
@@ -57,6 +58,7 @@ app.add_middleware(
 app.include_router(router=auth_router)
 app.include_router(router=user_router)
 app.include_router(router=api_router)
+app.include_router(router=chatbout_router)
 
 @app.get("/", tags=["Root"])
 async def root():

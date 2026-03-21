@@ -41,3 +41,6 @@ faiss_store/
 
 /models 
 models/
+
+/temp
+temp/
