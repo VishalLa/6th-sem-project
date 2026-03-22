@@ -7,7 +7,12 @@
       </div>
     </div>
 
-    <div v-if="!hasData" class="empty">
+    <div v-if="refreshing" class="loading-state">
+      <div class="spin-lg"/>
+      <p>Building graph from database…</p>
+    </div>
+
+    <div v-else-if="!hasData" class="empty">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1">
         <circle cx="12" cy="5" r="2"/>
         <circle cx="5"  cy="19" r="2"/>
@@ -24,12 +29,26 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import { useResultsStore }  from '@/stores/results'
-import GraphViewComponent   from '@/components/GraphView.vue'
+import { ref, computed, onMounted } from 'vue'
+import { useResultsStore } from '@/stores/results'
+import { getMyFraudRings } from '@/services/api'
+import GraphViewComponent from '@/components/GraphView.vue'
 
-const store   = useResultsStore()
-const hasData = computed(() => Object.keys(store.graphDataByFile).length > 0)
+const store      = useResultsStore()
+const refreshing = ref(false)
+const hasData    = computed(() => Object.keys(store.graphDataByFile).length > 0)
+
+onMounted(async () => {
+  if (!hasData.value) {
+    refreshing.value = true
+    try {
+      const res = await getMyFraudRings(500, 0)
+      const rings = res.data?.fraud_rings || []
+      if (rings.length) store.setFromDBRings(rings)
+    } catch (e) { console.error('Graph load failed:', e) }
+    finally { refreshing.value = false }
+  }
+})
 </script>
 
 <style scoped>
@@ -37,6 +56,14 @@ const hasData = computed(() => Object.keys(store.graphDataByFile).length > 0)
 .header { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:16px; margin-bottom:24px; }
 .title  { font-family:var(--font-mono); font-size:clamp(20px,3vw,28px); font-weight:700; margin-bottom:4px; }
 .sub    { color:var(--muted); font-size:13px; }
+.loading-state {
+  display:flex; flex-direction:column; align-items:center;
+  justify-content:center; gap:16px; height:300px; color:var(--muted);
+}
+.spin-lg {
+  width:40px; height:40px; border:3px solid var(--border);
+  border-top-color:var(--purple); border-radius:50%; animation:spin .8s linear infinite;
+}
 .empty  {
   display:flex; flex-direction:column; align-items:center;
   justify-content:center; gap:16px; height:400px;

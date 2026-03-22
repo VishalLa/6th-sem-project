@@ -12,10 +12,16 @@ export default defineConfig(({ command }) => ({
   server: {
     port: 5173,
     proxy: {
-      '/input': 'http://127.0.0.1:8000/',
-      '/show':  'http://127.0.0.1:8000/',
-      '/download': 'http://127.0.0.1:8000/'
+      '/auth':         'http://127.0.0.1:8000',
+      '/users':        'http://127.0.0.1:8000',
+      '/upload':       'http://127.0.0.1:8000',
+      '/my-reports':   'http://127.0.0.1:8000',
+      '/my-transactions': 'http://127.0.0.1:8000',
+      '/my-fraud-rings':  'http://127.0.0.1:8000',
+      '/download':     'http://127.0.0.1:8000',
+      '/chatbot':      'http://127.0.0.1:8000',
+      '/health':       'http://127.0.0.1:8000',
     }
   },
-  base: command === 'build' ? "/Money_muling/" : "/"
+  base: command === 'build' ? '/Money_muling/' : '/'
 }))

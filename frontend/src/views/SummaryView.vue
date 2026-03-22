@@ -5,20 +5,32 @@
       <div>
         <h1 class="title">Fraud Ring Summary</h1>
         <p class="sub">
-          Results from
-          <span class="mono accent">{{ fileCount }} file{{ fileCount !== 1 ? 's' : '' }}</span>
-          — {{ store.totalRings }} ring{{ store.totalRings !== 1 ? 's' : '' }} detected
+          <template v-if="store.totalRings">
+            <span class="mono accent">{{ store.totalRings }}</span>
+            ring{{ store.totalRings !== 1 ? 's' : '' }} detected
+          </template>
+          <template v-else>No results yet</template>
         </p>
       </div>
       <div class="header-actions">
+        <button class="btn-sec" @click="reload" :disabled="refreshing">
+          <span v-if="refreshing" class="spin-sm"/>
+          {{ refreshing ? 'Loading…' : '↺ Reload' }}
+        </button>
         <button class="btn-sec" @click="exportCSV" :disabled="!store.rings.length">
           ↓ Export CSV
         </button>
       </div>
     </div>
 
-    <!-- No data yet -->
-    <div v-if="!store.rings.length && !store.loading" class="empty">
+    <!-- Loading state -->
+    <div v-if="refreshing" class="loading-state">
+      <div class="spin-lg"/>
+      <p>Loading results from database…</p>
+    </div>
+
+    <!-- No data -->
+    <div v-else-if="!store.rings.length" class="empty">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
         <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/>
         <polyline points="13 2 13 9 20 9"/>
@@ -35,14 +47,27 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useResultsStore } from '@/stores/results'
+import { getMyFraudRings } from '@/services/api'
 import StatCards    from '@/components/StatCards.vue'
 import SummaryTable from '@/components/SummaryTable.vue'
 
-const store = useResultsStore()
+const store     = useResultsStore()
+const refreshing = ref(false)
 
-const fileCount = computed(() => Object.keys(store.reportsByFile).length)
+async function reload() {
+  refreshing.value = true
+  try {
+    const res = await getMyFraudRings(500, 0)
+    const rings = res.data?.fraud_rings || []
+    if (rings.length) store.setFromDBRings(rings)
+  } catch (e) { console.error('Reload failed:', e) }
+  finally { refreshing.value = false }
+}
+
+// Auto-load on first visit if store is empty
+onMounted(() => { if (!store.rings.length) reload() })
 
 function exportCSV() {
   if (!store.rings.length) return
@@ -85,6 +110,20 @@ function exportCSV() {
 }
 .btn-sec:hover:not(:disabled) { color:var(--text); border-color:var(--purple); }
 .btn-sec:disabled { opacity:.4; cursor:not-allowed; }
+
+.spin-sm {
+  width:13px; height:13px; border:2px solid rgba(255,255,255,.2);
+  border-top-color:var(--accent); border-radius:50%; animation:spin .7s linear infinite; display:inline-block;
+}
+
+.loading-state {
+  display:flex; flex-direction:column; align-items:center;
+  justify-content:center; gap:16px; height:300px; color:var(--muted);
+}
+.spin-lg {
+  width:40px; height:40px; border:3px solid var(--border);
+  border-top-color:var(--purple); border-radius:50%; animation:spin .8s linear infinite;
+}
 
 .empty {
   display:flex; flex-direction:column; align-items:center;

@@ -387,20 +387,20 @@ class DataIngestionService:
         tenant_id: str
     ) -> None:
         """
-        Inserts transaction rows using SQLAlchemy bulk inserts.
-        Maps DataFrame columns to Transaction model fields.
-        
+        Upserts transaction rows — skips rows whose transaction_id already exists
+        for this tenant so re-uploading the same file does not create duplicates.
+
         Args:
             dataframe: Transaction data from CSV
             tenant_id: User ID from User table
-            
+
         Raises:
             HTTPException: If database operation fails
         """
+        from sqlalchemy import delete as sa_delete
 
         df = dataframe.copy()
-
-        df['tenant_user_id'] = tenant_id 
+        df['tenant_user_id'] = tenant_id
 
         if 'timestamp' in df.columns:
             df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
@@ -422,32 +422,39 @@ class DataIngestionService:
             'tenant_user_id': 'tenant_user_id'
         }
 
-        available_cols = [
-            col for col in column_mapping.keys() 
-            if col in df.columns
-        ]
+        available_cols = [col for col in column_mapping.keys() if col in df.columns]
         df_to_insert = df[available_cols].copy()
 
         records = df_to_insert.replace({
-            pd.NA: None, 
+            pd.NA: None,
             pd.NaT: None,
             float('nan'): None
         }).to_dict(orient="records")
 
-        for i in range(0, len(records), self.CHUNK_SIZE):
-            chunk = records[i : i + self.CHUNK_SIZE]
-            stmt = insert(Transaction).values(chunk)
+        incoming_ids = [r['transaction_id'] for r in records if r.get('transaction_id')]
 
-            try:
-                await self.db.execute(stmt)
-            except Exception as e:
-                await self.db.rollback()
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Something went wronge! {e} "
+        try:
+            if incoming_ids:
+                # Delete existing rows for these exact transaction IDs under this tenant
+                await self.db.execute(
+                    sa_delete(Transaction).where(
+                        Transaction.tenant_user_id == tenant_id,
+                        Transaction.transaction_id.in_(incoming_ids)
+                    )
                 )
-            
-        await self.db.commit()
+
+            for i in range(0, len(records), self.CHUNK_SIZE):
+                chunk = records[i: i + self.CHUNK_SIZE]
+                await self.db.execute(insert(Transaction).values(chunk))
+
+            await self.db.commit()
+
+        except Exception as e:
+            await self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to save transactions: {e}"
+            )
 
     
     async def _bulk_insert_summary(
@@ -456,24 +463,28 @@ class DataIngestionService:
         tenant_id: str
     ):
         """
-        Inserts fraud ring summaries into the database.
-        Maps summary DataFrame to FraudRingSummary model.
-        
+        Upserts fraud ring summaries into the database.
+        Deletes any existing rings for this tenant first so that re-uploading
+        a new file always reflects the latest detection results (no stale rings).
+        Uses INSERT OR REPLACE semantics to handle the primary-key conflict that
+        caused the 500 error when the same file was uploaded more than once.
+
         Args:
             summary_df: Summary DataFrame from MainEngine.summary_table()
             tenant_id: User ID from User table
-            
+
         Raises:
             HTTPException: If database operation fails
         """
+        from sqlalchemy import delete
 
         if summary_df.empty:
             return
-        
+
         df = summary_df.copy()
         df['tenant_user_id'] = tenant_id
         df['created_at'] = datetime.utcnow()
-            
+
         column_mapping = {
             "Ring ID": "ring_id",
             "Pattern Type": "pattern_type",
@@ -483,38 +494,43 @@ class DataIngestionService:
             "Member Account IDs": "member_accounts"
         }
         df = df.rename(columns=column_mapping)
-        
 
         db_columns = [
             'ring_id',
-            'tenant_user_id', 
-            'pattern_type', 
-            'member_count', 
-            'risk_score', 
-            'risk_category', 
+            'tenant_user_id',
+            'pattern_type',
+            'member_count',
+            'risk_score',
+            'risk_category',
             'member_accounts',
             'created_at'
         ]
 
         available_cols = [col for col in db_columns if col in df.columns]
         df = df[available_cols]
-        
+
         records = df.replace({
             pd.NA: None,
             pd.NaT: None,
             float('nan'): None
         }).to_dict(orient="records")
 
-        stmt = insert(FraudRingSummary).values(records)
-
         try:
+            await self.db.execute(
+                delete(FraudRingSummary).where(
+                    FraudRingSummary.tenant_user_id == tenant_id
+                )
+            )
+
+            stmt = insert(FraudRingSummary).values(records)
             await self.db.execute(stmt)
             await self.db.commit()
+
         except Exception as e:
             await self.db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Something went wronge! {e} "
+                detail=f"Failed to save fraud ring summary: {e}"
             )
         
 
@@ -795,7 +811,7 @@ class DataIngestionService:
                 "sender": txn.sender,
                 "receiver": txn.receiver,
                 "amount": float(txn.amount) if txn.amount else None,
-                "timestamp": txn.timestamp.isoformat() if txn.timeastamp else None,
+                "timestamp": txn.timestamp.isoformat() if txn.timestamp else None,
                 "sender_country": txn.sender_country,
                 "receiver_country": txn.receiver_country,
                 "sender_kyc": txn.sender_kyc,
