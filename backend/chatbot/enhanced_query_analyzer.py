@@ -105,10 +105,37 @@ class EnhancedQueryAnalyzer:
         logger.info("EnhancedQueryAnalyzer initialized.")
 
 
+    # ------------------------------------------------------------------
+    # Priority rules applied BEFORE the intent-detector output.
+    # Each entry: (trigger_phrases, operation_type, aggregation_or_None)
+    # Checked top-to-bottom; first match wins.
+    # ------------------------------------------------------------------
+    _PRIORITY_RULES = [
+        # COUNT
+        (["how many", "number of", "total number", "count of"],
+         "COUNT", "COUNT"),
+        # AGGREGATE / AVG
+        (["average", "avg", "mean"],
+         "AGGREGATE", "AVG"),
+        # AGGREGATE / SUM
+        (["total amount", "sum of", "what is the total", "overall amount",
+          "what's the total"],
+         "AGGREGATE", "SUM"),
+        # GROUP_BY
+        (["group by", "group transactions by", "breakdown by", "split by",
+          "by sender country", "by receiver country", "by payment method",
+          "by txn method", "by method", "by country",
+          "per country", "per method"],
+         "GROUP_BY", None),
+        # FRAUD
+        (["suspicious", "fraud", "anomal", "risky", "high-risk",
+          "high risk", "flagged", "risk"],
+         "FRAUD_DETECT", None),
+    ]
+
     def analyze(self, raw_query: str) -> Dict:
         """
         Full analysis of a raw user query.
-        IMPROVED: Better handling of common queries.
 
         Args:
             raw_query: Raw user input
@@ -116,18 +143,18 @@ class EnhancedQueryAnalyzer:
         Returns:
             QuerySpec dict with all analysis results
         """
-        # Multi-question detection (analyze each sub-question if needed)
+        # Multi-question detection
         multi = self.multi_detector.detect_multiple(raw_query)
-
-        # Work with the first question for primary analysis
         primary_query = multi["questions"][0] if multi["questions"] else raw_query
 
         # Preprocessing
         pp = self.query_preprocessor.preprocess(primary_query)
         tokens = pp["lemmatized_tokens"]
         text = pp["corrected_text"]
+        text_lower = text.lower()
+        raw_lower = raw_query.lower()
 
-        # Intent + domain
+        # Intent + domain (used for confidence scoring)
         intent_domain = self.intent_detector.analyze(tokens, text)
 
         # Keyword extraction
@@ -139,13 +166,29 @@ class EnhancedQueryAnalyzer:
         # Math spec
         math_spec = self.math_handler.build_math_spec(text, tokens)
 
-        # Determine operation type
-        primary_intent = intent_domain["primary_intent"]
-        operation_type = INTENT_TO_OPERATION.get(primary_intent, "SELECT")
+        # ------------------------------------------------------------------
+        # Operation routing: priority rules first, then intent detector
+        # ------------------------------------------------------------------
+        operation_type = None
+        forced_aggregation = None
 
-        # If math operation detected, override
-        if math_spec["is_math_query"] and operation_type not in ("FRAUD_DETECT", "HELP", "NAVIGATE"):
-            operation_type = "CALCULATE"
+        for triggers, op, agg in self._PRIORITY_RULES:
+            if any(t in text_lower or t in raw_lower for t in triggers):
+                operation_type = op
+                forced_aggregation = agg
+                logger.debug(f"Priority rule matched: op={op}, agg={agg}")
+                break
+
+        if operation_type is None:
+            primary_intent = intent_domain["primary_intent"]
+            operation_type = INTENT_TO_OPERATION.get(primary_intent, "SELECT")
+            # Math override only when no priority rule matched
+            if math_spec["is_math_query"] and operation_type not in (
+                "FRAUD_DETECT", "HELP", "NAVIGATE"
+            ):
+                operation_type = "CALCULATE"
+
+        primary_intent = intent_domain["primary_intent"]
 
         # Detect target column
         target_column = self._detect_target_column(keywords["columns"], operation_type, entities, text)
@@ -156,12 +199,13 @@ class EnhancedQueryAnalyzer:
         # Detect sort direction
         sort_direction = self._detect_sort_direction(text)
 
-        # Determine aggregation
-        aggregation = self._detect_aggregation(text, operation_type)
+        # Determine aggregation — priority rule value takes precedence
+        aggregation = forced_aggregation if forced_aggregation is not None \
+            else self._detect_aggregation(text, operation_type)
 
-        # IMPROVED: Calculate confidence with better logic
+        # Calculate confidence
         confidence = self._calculate_confidence(
-            intent_domain, keywords, entities, operation_type, text
+            intent_domain, keywords, entities, operation_type, text, raw_lower
         )
 
         # UI action
@@ -323,54 +367,72 @@ class EnhancedQueryAnalyzer:
         keywords: Dict,
         entities: Dict,
         operation_type: str,
-        text: str
+        text: str,
+        raw_lower: str = "",
     ) -> float:
         """
         Calculate overall confidence score for the analysis.
-        IMPROVED: Better scoring logic with query-specific boosts.
+        Always returns a value in [0.0, 1.0] so the API response always
+        includes a meaningful confidence field.
         """
         score = 0.0
         text_lower = text.lower()
+        combined = text_lower + " " + raw_lower  # check both corrected + original
 
-        # Intent confidence (0–0.3)
+        # Base: intent confidence (0–0.25)
         intent_conf = intent_domain.get("confidence", 0.3)
-        score += intent_conf * 0.3
+        score += intent_conf * 0.25
 
-        # Column matches (0–0.25)
+        # Column matches (0–0.20)
         col_count = len(keywords.get("columns", {}))
-        score += min(col_count * 0.125, 0.25)
+        score += min(col_count * 0.10, 0.20)
 
         # Filter matches (0–0.15)
         filter_count = len(keywords.get("filters", []))
         score += min(filter_count * 0.075, 0.15)
 
-        # Entity matches (0–0.15)
-        entity_count = sum(len(v) if isinstance(v, list) else 1 for v in entities.values())
-        score += min(entity_count * 0.075, 0.15)
-        
-        # IMPROVED: Boost for simple, common queries
-        simple_query_patterns = [
-            ("how many", 0.3),
-            ("what is the average", 0.3),
-            ("show me", 0.2),
-            ("total", 0.2),
-            ("count", 0.2),
-            ("high-risk", 0.25),
-            ("high risk", 0.25),
-            ("suspicious", 0.25),
-            ("fraud", 0.25),
-            ("group by", 0.2),
-            ("by country", 0.2),
-            ("by method", 0.2),
-        ]
-        
-        for pattern, boost in simple_query_patterns:
-            if pattern in text_lower:
-                score += boost
-                logger.debug(f"Applied boost {boost} for pattern '{pattern}'")
-                break
+        # Entity matches (0–0.10)
+        entity_count = sum(
+            len(v) if isinstance(v, list) else 1 for v in entities.values()
+        )
+        score += min(entity_count * 0.05, 0.10)
 
-        # IMPROVED: Boost for numeric conditions
+        # Pattern boosts — applied cumulatively (not just first match)
+        pattern_boosts = [
+            ("how many",            0.30),
+            ("what is the average", 0.30),
+            ("average",             0.25),
+            ("what is the total",   0.30),
+            ("total amount",        0.25),
+            ("show me",             0.20),
+            ("list all",            0.20),
+            ("total",               0.15),
+            ("count",               0.20),
+            ("high-risk",           0.25),
+            ("high risk",           0.25),
+            ("suspicious",          0.25),
+            ("fraud",               0.25),
+            ("group by",            0.20),
+            ("by country",          0.20),
+            ("by method",           0.20),
+            ("above",               0.15),
+            ("below",               0.15),
+            ("greater than",        0.15),
+        ]
+
+        boosted = False
+        for pattern, boost in pattern_boosts:
+            if pattern in combined:
+                score += boost
+                boosted = True
+                logger.debug(f"Confidence boost +{boost} for pattern '{pattern}'")
+                break  # one boost only — prevents runaway scores
+
+        # Fallback floor: any valid operation still gets a base score
+        if not boosted and operation_type not in ("HELP",):
+            score += 0.20
+
+        # Numeric conditions boost
         if keywords.get("numeric_conditions"):
             score += 0.15
 

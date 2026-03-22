@@ -62,11 +62,24 @@ class SpellChecker:
     Operates on individual tokens and multi-word phrases.
     """
 
-    def __init__(self, max_edit_distance: int = 2, min_token_length: int = 4):
+    _PROTECTED_WORDS: set = {
+        "show", "find", "list", "get", "give", "tell", "what", "when", "where",
+        "which", "with", "from", "into", "onto", "over", "under", "above",
+        "below", "all", "any", "are", "and", "for", "the", "how", "many",
+        "more", "less", "most", "last", "first", "next", "only", "also",
+        "been", "have", "has", "was", "were", "did", "does", "not", "no",
+        "yes", "top", "per", "by", "in", "on", "at", "to", "of",
+        "high", "low", "new", "old", "big", "group", "sort", "compare",
+        "count", "sum", "avg", "max", "min", "between", "total", "mean",
+    }
+
+    def __init__(self, max_edit_distance: int = 2, min_token_length: int = 5):
         """
         Args:
             max_edit_distance: Maximum edit distance to consider a correction
-            min_token_length: Minimum token length to attempt correction (skip short tokens)
+            min_token_length: Minimum token length to attempt correction (skip short tokens).
+                              Raised to 5 (from 4) to avoid false corrections on 4-letter
+                              common words like "show", "find", "list", etc.
         """
         self.vocabulary = KNOWN_VOCABULARY
         self.vocab_set = set(v.lower() for v in self.vocabulary)
@@ -146,9 +159,10 @@ class SpellChecker:
         corrected_tokens = []
 
         for token in tokens:
-            # Skip short tokens, numbers, IDs
+            # Skip short tokens, numbers, IDs, and protected common words
             if (
                 len(token) < self.min_token_length
+                or token.lower() in self._PROTECTED_WORDS
                 or token.startswith("acc")
                 or token.startswith("txn")
                 or token.startswith("dev")

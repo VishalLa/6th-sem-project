@@ -116,19 +116,40 @@ class DataExecutor:
             
             try:
                 if len(col_filters) == 1:
-                    # Single filter - simple case
                     f = col_filters[0]
                     op = f.get("operator", "==")
                     val = f.get("value")
-                    
-                    if op == "==":
+
+                    # Special case: filtering for None/null KYC (or any column)
+                    # The raw data may store actual NaN/None, which .astype(str) turns
+                    # into the string "nan" or "none". Match both.
+                    if op == "==" and str(val).lower() in ("none", "null", "nan", ""):
+                        df = df[
+                            df[col].isna()
+                            | df[col].astype(str).str.lower().isin(["none", "null", "nan", ""])
+                        ]
+                    elif op == "==":
                         df = df[df[col].astype(str).str.lower() == str(val).lower()]
                     elif op == "!=":
                         df = df[df[col].astype(str).str.lower() != str(val).lower()]
                 else:
-                    # Multiple filters on same column - use OR logic
+                    # Multiple filters on same column — OR logic
                     values = [f.get("value") for f in col_filters]
-                    df = df[df[col].astype(str).str.lower().isin([str(v).lower() for v in values])]
+                    none_vals = {str(v).lower() for v in values if str(v).lower() in ("none", "null", "nan", "")}
+                    normal_vals = [str(v).lower() for v in values if str(v).lower() not in ("none", "null", "nan", "")]
+
+                    if none_vals and normal_vals:
+                        df = df[
+                            df[col].isna()
+                            | df[col].astype(str).str.lower().isin(["none", "null", "nan", ""] + normal_vals)
+                        ]
+                    elif none_vals:
+                        df = df[
+                            df[col].isna()
+                            | df[col].astype(str).str.lower().isin(["none", "null", "nan", ""])
+                        ]
+                    else:
+                        df = df[df[col].astype(str).str.lower().isin(normal_vals)]
                     logger.debug(f"Applied OR filter for {col}: {values}")
                     
             except Exception as e:
@@ -240,6 +261,7 @@ class DataExecutor:
                 # Default limit for display
                 limit = 100
         
+        was_limited = limit is not None and len(df) > 0 and limit < len(df)
         df = df.head(int(limit)) if limit else df
 
         return {
@@ -248,12 +270,12 @@ class DataExecutor:
                 "count": len(df),
                 "operation": "SELECT",
                 "columns": list(df.columns),
-                "limited": limit is not None and limit < len(self.df),
+                "limited": was_limited,
             },
             "operation": "SELECT",
             "success": True,
         }
-    
+
 
     def execute_group_by(self, query_spec: Dict) -> Dict:
         """

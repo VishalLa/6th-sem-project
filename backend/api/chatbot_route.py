@@ -276,10 +276,7 @@ async def get_or_create_chatbot(
     
     # Load transaction data
     df = await load_user_transactions(tenant_id, db)
-    
-    # Load fraud summary context
-    fraud_context = await build_fraud_context(tenant_id, db)
-    logger.info(f"Fraud context for {tenant_id}: {fraud_context[:200]}...")
+    fraud_df = await load_fraud_summaries(tenant_id, db)
     
     # Initialize chatbot
     logger.info(f"Creating new chatbot for tenant {tenant_id}")
@@ -291,6 +288,7 @@ async def get_or_create_chatbot(
     # Create chatbot
     chatbot = FraudDetectionChatbot(
         df=df,
+        fraud_summary_df=fraud_df,
         vector_store=vector_store if VECTOR_AVAILABLE else None,
         embeddings=embeddings if VECTOR_AVAILABLE else None,
         default_tenant_id=tenant_id
@@ -503,7 +501,22 @@ async def get_dataset_info(
         chatbot = await get_or_create_chatbot(current_user.user_id, db)
         info = chatbot.get_dataset_info()
         
-        return DatasetInfoResponse(**info)
+        formatted_info = {
+            "rows": info.get("transaction_count", 0),
+            "columns": info.get("column_names", []),
+            "kyc_distribution": info.get("kyc_dist", {}),
+            "method_distribution": info.get("method_dist", {}),
+            "country_distribution": info.get("country_dist", {}),
+            "amount_stats": {
+                "min": info.get("min_amount"),
+                "max": info.get("max_amount"),
+                "avg": info.get("avg_amount"),
+                "total": info.get("total_amount")
+            }
+        }
+
+        return DatasetInfoResponse(**formatted_info)
+        # return DatasetInfoResponse(**info)
         
     except HTTPException:
         raise

@@ -102,24 +102,26 @@ class RuleBasedAnswerConstructor:
                 "answer": f"I encountered an error processing your request: {error}",
                 "table_data": None,
                 "answer_type": "error",
+                "confidence": query_spec.get("confidence", 0.0),
             }
 
         operation = execution_result.get("operation", "SELECT")
+        confidence = query_spec.get("confidence", 0.0)
 
         if operation == "COUNT":
-            return self._construct_count_answer(query_spec, execution_result)
-        
+            resp = self._construct_count_answer(query_spec, execution_result)
         elif operation == "AGGREGATE":
-            return self._construct_aggregate_answer(query_spec, execution_result)
-        
+            resp = self._construct_aggregate_answer(query_spec, execution_result)
         elif operation == "GROUP_BY":
-            return self._construct_group_by_answer(query_spec, execution_result)
-        
+            resp = self._construct_group_by_answer(query_spec, execution_result)
         elif operation == "FRAUD_DETECT":
-            return self._construct_fraud_answer(query_spec, execution_result)
-        
+            resp = self._construct_fraud_answer(query_spec, execution_result)
         else:
-            return self._construct_from_result(query_spec, execution_result)
+            resp = self._construct_from_result(query_spec, execution_result)
+
+        # Always ensure confidence is present in the response
+        resp.setdefault("confidence", confidence)
+        return resp
 
 
     def _construct_count_answer(self, spec: Dict, result: Dict) -> Dict:
@@ -344,7 +346,7 @@ class RuleBasedAnswerConstructor:
             "- _Average amount by payment method_\n"
             "- _Find suspicious transactions_\n"
         )
-        return {"answer": answer, "table_data": None, "answer_type": "help"}
+        return {"answer": answer, "table_data": None, "answer_type": "help", "confidence": 1.0}
 
 
 

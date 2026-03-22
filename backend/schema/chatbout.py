@@ -30,8 +30,8 @@ class SessionSummaryResponse(BaseModel):
 
 class DatasetInfoResponse(BaseModel):
     """Response model for dataset info."""
-    rows: int
-    columns: List[str]
+    transaction_count: int = Field(alias="rows")
+    columns: List[str] = []
     kyc_distribution: Dict[str, int] = {}
     method_distribution: Dict[str, int] = {}
     country_distribution: Dict[str, int] = {}
@@ -48,3 +48,4 @@ class BuildVectorDBResponse(BaseModel):
     status: str
     stats: Optional[Dict] = None
     reason: Optional[str] = None
+    
