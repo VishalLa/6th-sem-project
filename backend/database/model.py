@@ -116,3 +116,4 @@ class FraudRingSummary(Base):
 
     # ORM Relationship back to User
     tenant = relationship("User", back_populates="fraud_rings")
+    

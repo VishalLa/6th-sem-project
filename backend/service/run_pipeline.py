@@ -165,6 +165,8 @@ class Detect:
             json_name = f"{safe_name}_analysis.json"
             json_path = os.path.join(output_path, json_name)
 
+            # TODO: update this part so it saves to postgress databse in json format
+
             with open(json_path, "w", encoding="utf-8") as f:
                 json.dump(json_report, f, indent=4, default=str)
 

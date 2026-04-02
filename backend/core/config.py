@@ -8,6 +8,8 @@ from dataclasses import dataclass, asdict
 from typing import List
 
 
+# TODO: Update the config file
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # database folder

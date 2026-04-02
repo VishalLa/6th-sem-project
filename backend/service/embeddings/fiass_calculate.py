@@ -114,7 +114,8 @@ class FAISSVectorStore:
             logger.error(f"Failed to load index for tenant {tenant_id}: {e}")
             return None
         
-
+    
+    # TODO: Update this function to save all index in postgress database
     def _save_index(
         self, 
         tenant_id: str, 

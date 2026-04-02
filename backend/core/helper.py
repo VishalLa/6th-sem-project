@@ -13,12 +13,6 @@ def validate_date_format(date_string: str) -> str:
 
     return datetime.strptime(date_string, '%Y-%m-%d').date()
 
-import numpy as np
-import pandas as pd
-from datetime import datetime, date
-from typing import Any
-import json
-
 
 def convert_numpy_types(obj: Any) -> Any:
     """
