@@ -1,4 +1,5 @@
 import os
+import re
 import pandas as pd
 from fastapi import (
     UploadFile,
@@ -24,6 +25,22 @@ from core.config import vector_settings
 
 from .embeddings.create_vector_db import CPUEmbeddings
 from .embeddings.fiass_calculate import FAISSVectorStore
+
+COLUMN_PATTERNS = {
+    "sender_country": re.compile(r"(sender.{0,3}country|origin.{0,3}country|sender.{0,3}loc|from.{0,3}country|source.{0,3}country)", re.I),
+    "receiver_country": re.compile(r"(receiver.{0,3}country|dest.{0,3}country|receiver.{0,3}loc|to.{0,3}country|destination.{0,3}country)", re.I),
+    "sender_kyc": re.compile(r"(sender.{0,3}kyc|from.{0,3}kyc|kyc.{0,3}status|verified|verification|kyc)", re.I),
+    "sender_acct_age": re.compile(r"(sender.{0,3}acct.{0,3}age|sender.{0,3}account.{0,3}age|account.{0,3}age|acct.{0,3}age|age)", re.I),
+    "is_round_amount": re.compile(r"(is.{0,3}round|round|round.{0,3}amount|is.{0,3}round.{0,3}amt)", re.I),
+    "txn_method": re.compile(r"(txn.{0,3}method|transaction.{0,3}method|payment.{0,3}method|type|method|channel|mode)", re.I),
+    "velocity_mins": re.compile(r"(velocity|velocity.{0,3}mins|time.{0,3}gap|time.{0,3}diff|gap.{0,3}mins)", re.I),
+    "device_id": re.compile(r"(device|device.{0,3}id|dev.{0,3}id|ip|ip.{0,3}address|machine.{0,3}id)", re.I),
+    "transaction_id": re.compile(r"(txn|trans|transaction).*(id|no|number|ref)", re.I),
+    "sender": re.compile(r"(sender|from|debitor|source|paid.{0,3}by|sender_id|payer)", re.I),
+    "receiver": re.compile(r"(receiver|to|creditor|destination|beneficiary|paid.{0,3}to|receiver_id|payee)", re.I),
+    "amount": re.compile(r"(amount|amt|money|value|rs|inr|debit|credit|sum|total)", re.I),
+    "timestamp": re.compile(r"(date|time|timestamp|datetime|transaction.{0,3}date|txn.{0,3}date|when)", re.I),
+}
 
 
 class DataIngestionService:
@@ -397,29 +414,35 @@ class DataIngestionService:
         from sqlalchemy import delete as sa_delete
 
         df = dataframe.copy()
+        
+        mapped_columns = {}
+        for df_col in df.columns:
+            for db_col, pattern in COLUMN_PATTERNS.items():
+                if pattern.search(str(df_col)):
+                    mapped_columns[df_col] = db_col
+                    break 
+                    
+        df = df.rename(columns=mapped_columns)
+        
         df['tenant_user_id'] = tenant_id
 
         if 'timestamp' in df.columns:
             df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
 
-        column_mapping = {
-            'transaction_id': 'transaction_id',
-            'sender': 'sender',
-            'receiver': 'receiver',
-            'amount': 'amount',
-            'timestamp': 'timestamp',
-            'sender_country': 'sender_country',
-            'receiver_country': 'receiver_country',
-            'sender_kyc': 'sender_kyc',
-            'txn_method': 'txn_method',
-            'device_id': 'device_id',
-            'sender_acct_age': 'sender_acct_age',
-            'velocity_mins': 'velocity_mins',
-            'is_round_amount': 'is_round_amount',
-            'tenant_user_id': 'tenant_user_id'
-        }
+        # Cast all VARCHAR columns to str so numeric account IDs don't cause
+        # "expected str, got int" errors in asyncpg.
+        varchar_cols = [
+            'transaction_id', 'sender', 'receiver',
+            'sender_country', 'receiver_country',
+            'sender_kyc', 'txn_method', 'device_id',
+        ]
+        for col in varchar_cols:
+            if col in df.columns:
+                df[col] = df[col].where(df[col].isna(), df[col].astype(str))
 
-        available_cols = [col for col in column_mapping.keys() if col in df.columns]
+        db_columns = list(COLUMN_PATTERNS.keys()) + ['tenant_user_id']
+        available_cols = [col for col in db_columns if col in df.columns]
+        
         df_to_insert = df[available_cols].copy()
 
         records = df_to_insert.replace({
@@ -432,7 +455,6 @@ class DataIngestionService:
 
         try:
             if incoming_ids:
-                # Delete existing rows for these exact transaction IDs under this tenant
                 await self.db.execute(
                     sa_delete(Transaction).where(
                         Transaction.tenant_user_id == tenant_id,
@@ -440,8 +462,10 @@ class DataIngestionService:
                     )
                 )
 
-            for i in range(0, len(records), self.CHUNK_SIZE):
-                chunk = records[i: i + self.CHUNK_SIZE]
+            chunk_size = getattr(self, 'CHUNK_SIZE', 1000) 
+            
+            for i in range(0, len(records), chunk_size):
+                chunk = records[i: i + chunk_size]
                 await self.db.execute(insert(Transaction).values(chunk))
 
             await self.db.commit()
