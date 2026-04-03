@@ -1,12 +1,14 @@
 import os
 import json
+import shutil
+import time
 
 from fastapi import (
     HTTPException,
     status,
     UploadFile
 )
-from fastapi.responses import FileResponse
+
 from io import StringIO
 from typing import List, Dict, Optional
 import pandas as pd
@@ -15,25 +17,21 @@ from graphs.engine import MainEngine
 from graphs.build_graph import Graph
 
 
-class Detect:
+class Detect: 
+
     """
     Handles fraud detection pipeline for uploaded CSV files.
     Processes files, runs detection algorithms, and generates tenant-specific reports.
     """
 
-    def __init__(self, output_base_path: str = "output/"):
-        """
-        Initialize Detect with base output path.
-        
-        Args:
-            output_base_path: Base directory for all outputs
-        """
-        self.output_base_path = output_base_path
+    def __init__(self, temp_dir: str = "temp/"):
+        self.temp_dir = temp_dir
+        os.makedirs(self.temp_dir, exist_ok=True)
 
-
-    def _get_tenant_output_path(self, tenant_id: str) -> str:
+    
+    def _get_tenant_temp_path(self, tenant_id: str) -> str:
         """
-        Get tenant-specific output directory.
+        Get tenant-specific temp directory.
         
         Args:
             tenant_id: User ID
@@ -41,7 +39,7 @@ class Detect:
         Returns:
             Path to tenant's output directory
         """
-        tenant_path = os.path.join(self.output_base_path, tenant_id)
+        tenant_path = os.path.join(self.temp_dir, tenant_id)
         os.makedirs(tenant_path, exist_ok=True)
         return tenant_path
 
@@ -86,6 +84,7 @@ class Detect:
                     decoded = contents.decode("latin-1")
 
                 df = pd.read_csv(StringIO(decoded), sep=None, engine="python")
+
                 graph = Graph(raw_dataframe=df)
                 output_dic[file.filename] = graph
 
@@ -99,7 +98,7 @@ class Detect:
                 await file.close()
 
         return output_dic
-
+    
 
     async def run_detction_pipeline(
         self,
@@ -112,7 +111,7 @@ class Detect:
         
         """
         Runs fraud detection pipeline on all graphs for a specific tenant.
-        Saves results to tenant-specific directory.
+        Saves results to database.
         
         Args:
             input_dict: Dictionary mapping filename to Graph object
@@ -125,7 +124,7 @@ class Detect:
             Dictionary containing results for each file
         """
 
-        output_path = self._get_tenant_output_path(tenant_id)
+        tenent_temp_path = self._get_tenant_temp_path(tenant_id=tenant_id)
 
         all_results: Dict = {}
 
@@ -163,21 +162,16 @@ class Detect:
 
             safe_name = filename.rsplit(".", 1)[0]
             json_name = f"{safe_name}_analysis.json"
-            json_path = os.path.join(output_path, json_name)
+            json_path = os.path.join(tenent_temp_path, json_name)
 
             # TODO: update this part so it saves to postgress databse in json format
 
             with open(json_path, "w", encoding="utf-8") as f:
                 json.dump(json_report, f, indent=4, default=str)
 
-            # print(f"[✓] Saved analysis for '{filename}' → {json_path}")
 
             csv_filename = f"{safe_name}_summary.csv"
-            csv_path = os.path.join(output_path, csv_filename)
-
-            if not summary_df.empty:
-                summary_df.to_csv(csv_path, index=False)
-                # print(f"\n💾 Saved summary CSV: {csv_path}")
+            csv_path = os.path.join(tenent_temp_path, csv_filename)
 
             all_results[filename] = {
                 "report": json_report,
@@ -189,3 +183,45 @@ class Detect:
             }
 
         return all_results
+    
+
+    def clean_expired_session(
+        self,
+        expire_minutes: int = 1440
+    ) -> None: 
+        """
+        Sweeps the temp directory and deletes any tenant folders older than the expire time.
+        1440 minutes = 24 hours.
+        """
+
+        if not os.path.exists(self.temp_dir):
+            return 
+        
+        now = time.time()
+
+        expire_seconds = expire_minutes * 60
+
+        for tenant_folder in os.listdir(self.temp_dir):
+            folder_path = os.path.join(self.temp_dir, tenant_folder)
+            
+            if os.path.isdir(folder_path):
+
+                folder_mtime = os.path.getmtime(folder_path)
+                
+                # If the folder is older than 24 hours, delete it
+                if (now - folder_mtime) > expire_seconds:
+                    try:
+                        shutil.rmtree(folder_path, ignore_errors=True)
+                    except Exception as e:
+                        print(f"Failed to delete expired temp folder {folder_path}: {e}")
+
+
+    def cleanup_specific_tenant(self, tenant_id: str) -> None:
+        """
+        Immediately deletes a specific tenant's temp folder (useful for a logout endpoint).
+        """
+        folder_path = self._get_tenant_temp_path(tenant_id)
+        if os.path.exists(folder_path):
+            shutil.rmtree(folder_path, ignore_errors=True)
+
+    

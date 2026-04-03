@@ -1,75 +1,67 @@
-import os
-
-from fastapi import (
-    HTTPException,
-    status,
-)
-from fastapi.responses import FileResponse
+import json
+import io
+import csv
 from typing import Dict
+
+from fastapi import HTTPException, status
+from fastapi.responses import Response, StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, delete
+
+from database.model import JSONStore 
 
 
 # TODO: Updaate this entire code so it extracts all the saved stuff form postgress database
 
 
 class DownLoad_JSON:
-
-    """
-    Handles listing and downloading of generated JSON reports.
-    """
-
-    def __init__(self, output_dir_path: str = "output/"):
-        """
-        Initialize with base output directory.
-        
-        Args:
-            output_base_path: Base directory containing tenant folders
-        """
-        self.output_dir_path = output_dir_path
-
-
-    def _get_tenant_output_path(self, tenant_id: str) -> str:
-        """Get tenant-specific output directory."""
-        return os.path.join(self.output_dir_path, tenant_id)
     
+    """
+    Handles listing, downloading, and deleting of generated JSON reports 
+    stored directly in the PostgreSQL database.
+    """
 
-    async def show_json_files(self, tenant_id: str):
+    def __init__(self, db: AsyncSession):
+        self.db = db
 
+
+    async def show_json_files(self, tenant_id: str) -> Dict:
         """
-        Lists all JSON files for a specific tenant only.
+        Lists all JSON files for a specific tenant from the database.
         
         Args:
             tenant_id: User ID
             
         Returns:
-            Dictionary with list of tenant's files
+            Dictionary with list of tenant's files and download URLs
         """
 
         try:
-            tenant_path = self._get_tenant_output_path(tenant_id)
-            
-            if not os.path.exists(tenant_path):
+            query = select(JSONStore.filename).where(JSONStore.tenant_user_id == tenant_id)
+
+            result = await self.db.execute(query)
+            filenames = result.scalars().all()
+
+            if not filenames:
                 return {
                     "tenant_id": tenant_id,
                     "files": [],
                     "message": f"No reports found for tenant {tenant_id}."
                 }
-            json_files = [f for f in os.listdir(tenant_path) if f.endswith(".json")]
-            csv_files = [f for f in os.listdir(tenant_path) if f.endswith(".csv")]
+
 
             file_groups = {}
-            for json_file in json_files:
-                base_name = json_file.replace("_analysis.json", "")
-                csv_file = f"{base_name}_summary.csv"
+            for file_name in filenames:
+                base_name = file_name.replace("_analysis.json", "").replace(".json", "")
                 
                 file_groups[base_name] = {
                     "analysis_name": base_name,
-                    "json_file": json_file,
-                    "json_download_url": f"/download/json/{tenant_id}/{json_file.rsplit('.', 1)[0]}",
-                    "csv_file": csv_file if csv_file in csv_files else None,
-                    "csv_download_url": f"/download/csv/{tenant_id}/{base_name}" if csv_file in csv_files else None
+                    "json_file": file_name,
+                    "json_download_url": f"/download/json/{tenant_id}/{base_name}",
+                    "csv_download_url": f"/download/csv/{tenant_id}/{base_name}"
                 }
 
-                return {
+            return {
                 "tenant_id": tenant_id,
                 "total_analyses": len(file_groups),
                 "files": list(file_groups.values())
@@ -83,91 +75,108 @@ class DownLoad_JSON:
             }
 
 
-    async def download_json_file(self, tenant_id: str, file_name: str) -> FileResponse:
+    async def download_json_file(self, tenant_id: str, file_name: str) -> Response:
         """
-        Downloads a specific JSON file for a tenant.
+        Downloads a specific JSON file for a tenant from the database.
         
         Args:
             tenant_id: User ID
             file_name: Name of file (without .json extension)
             
         Returns:
-            FileResponse with the JSON file
-            
-        Raises:
-            HTTPException: If file not found or unauthorized
+            FastAPI Response configured to download as a JSON file
         """
 
         if not file_name.endswith(".json"):
             file_name = f"{file_name}.json"
 
-        if ".." in file_name or "/" in file_name or "\\" in file_name:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid filename"
-            )
+        # Query the database for the specific file
+        query = select(JSONStore).where(
+            JSONStore.tenant_user_id == tenant_id,
+            JSONStore.filename == file_name
+        )
 
-        tenant_path = self._get_tenant_output_path(tenant_id)
-        file_path = os.path.join(tenant_path, file_name)
+        result = await self.db.execute(query)
+        db_file = result.scalar_one_or_none()
 
-        if not os.path.exists(file_path):
+        if not db_file:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"File '{file_name}' not found"
+                detail=f"File '{file_name}' not found for tenant {tenant_id}"
             )
 
-        return FileResponse(
-            path=file_path,
-            filename=file_name,
-            media_type="application/json"
-        )
-    
+        # Convert the JSONB data back to a formatted string
+        json_str = json.dumps(db_file.json_data, indent=4)
 
-    async def download_csv_file(self, tenant_id: str, file_name: str) -> FileResponse:
+        # Return as a downloadable file
+        return Response(
+            content=json_str,
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{file_name}"'}
+        )
+
+
+    async def download_csv_file(self, tenant_id: str, file_name: str) -> StreamingResponse:
         """
-        Downloads a specific CSV summary file for a tenant.
+        Dynamically generates and downloads a CSV summary from the stored JSON data.
         
         Args:
             tenant_id: User ID
             file_name: Base name of file (without extension)
             
         Returns:
-            FileResponse with the CSV file
-            
-        Raises:
-            HTTPException: If file not found or unauthorized
+            StreamingResponse containing the generated CSV
         """
+        # Look for the source JSON file in the DB
+        json_filename = f"{file_name}.json"
+        if file_name.endswith("_summary"):
+            json_filename = file_name.replace("_summary", "_analysis.json")
 
-        if not file_name.endswith(".csv"):
-            file_name = f"{file_name}_summary.csv"
+        query = select(JSONStore).where(
+            JSONStore.tenant_user_id == tenant_id,
+            JSONStore.filename == json_filename
+        )
 
+        result = await self.db.execute(query)
+        db_file = result.scalar_one_or_none()
 
-        if ".." in file_name or "/" in file_name or "\\" in file_name:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid filename"
-            )
-
-        tenant_path = self._get_tenant_output_path(tenant_id)
-        file_path = os.path.join(tenant_path, file_name)
-
-
-        if not os.path.exists(file_path):
+        if not db_file or not db_file.json_data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"File '{file_name}' not found for tenant {tenant_id}"
+                detail=f"Source data for '{file_name}' not found"
             )
 
-        return FileResponse(
-            path=file_path,
-            filename=file_name,
-            media_type="text/csv"
+        # Generate CSV on the fly from the JSON data
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        data = db_file.json_data
+        
+        # Handle dict vs list of dicts for CSV conversion
+        if isinstance(data, dict):
+            writer.writerow(data.keys())
+            writer.writerow(data.values())
+
+        elif isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
+
+            writer.writerow(data[0].keys())
+            for row in data:
+                writer.writerow(row.values())
+
+        output.seek(0)
+        
+        download_filename = f"{file_name}_summary.csv" if not file_name.endswith(".csv") else file_name
+
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{download_filename}"'}
         )
-    
+
 
     async def delete_analysis(self, tenant_id: str, analysis_name: str) -> Dict:
         """
-        Deletes both JSON and CSV files for a specific analysis.
+        Deletes the JSON file (and therefore the dynamic CSV) for a specific analysis.
         
         Args:
             tenant_id: User ID
@@ -176,36 +185,29 @@ class DownLoad_JSON:
         Returns:
             Deletion status
         """
-        tenant_path = self._get_tenant_output_path(tenant_id)
+        json_filename = f"{analysis_name}_analysis.json"
+        if not analysis_name.endswith("_analysis"):
+            json_filename = f"{analysis_name}.json"
+
+        # Execute a delete query
+        query = delete(JSONStore).where(
+            JSONStore.tenant_user_id == tenant_id,
+            JSONStore.filename == json_filename
+        )
         
-        json_file = f"{analysis_name}_analysis.json"
-        csv_file = f"{analysis_name}_summary.csv"
-        
-        deleted_files = []
-        
-        # Delete JSON
-        json_path = os.path.join(tenant_path, json_file)
-        if os.path.exists(json_path):
-            os.remove(json_path)
-            deleted_files.append(json_file)
-        
-        # Delete CSV
-        csv_path = os.path.join(tenant_path, csv_file)
-        if os.path.exists(csv_path):
-            os.remove(csv_path)
-            deleted_files.append(csv_file)
-        
-        if not deleted_files:
+        result = await self.db.execute(query)
+        await self.db.commit()
+
+        if result.rowcount == 0:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Analysis '{analysis_name}' not found for tenant {tenant_id}"
             )
-        
+
         return {
             "tenant_id": tenant_id,
             "analysis_name": analysis_name,
-            "deleted_files": deleted_files,
+            "deleted_files": [json_filename],
             "status": "success"
         }
-
     

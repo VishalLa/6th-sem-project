@@ -4,7 +4,8 @@ from fastapi import (
     status,
     UploadFile,
     File,
-    HTTPException
+    HTTPException,
+    BackgroundTasks
 )
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,12 +23,14 @@ from core.helper import convert_numpy_types
 
 router = APIRouter()
 
+
 @router.post(
     "/upload/detect",
     status_code=status.HTTP_200_OK,
     tags=["Fraud Detection"]
 )
 async def upload_and_detect(
+    background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
     cycle_length: int = 8,
     current_user: User = Depends(get_current_user),
@@ -39,8 +42,9 @@ async def upload_and_detect(
     """
     
     try:
+        detector = Detect(temp_dir="temp/")
 
-        detector = Detect(output_base_path="output/")
+        background_tasks.add_task(detector.clean_expired_session, expire_minutes=1440)
 
         graphs_dict = await detector.handle_files(files=files)
 
@@ -68,6 +72,37 @@ async def upload_and_detect(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fraud detection failed: {str(e)}"
         )
+    
+
+@router.post(
+    "/session/cleanup",
+    status_code=status.HTTP_200_OK,
+    tags=["Session Management"]
+)
+async def cleanup_user_session(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Deletes the temporary files for the current user.
+    Call this from the frontend when the user logs out or their token expires.
+    """
+    try:
+        detector = Detect(temp_dir="output/")
+        
+        # Instantly delete this specific user's temporary folder
+        detector.cleanup_specific_tenant(tenant_id=current_user.user_id)
+        
+        return {
+            "status": "success",
+            "message": "User session files cleaned up successfully."
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to clean up session files: {str(e)}"
+        )
+    
 
 @router.post(
     "/upload/full-pipeline",
@@ -127,7 +162,8 @@ async def upload_full_pipeline(
     tags=["File Management"]
 )
 async def list_my_reports(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     
     """
@@ -135,9 +171,13 @@ async def list_my_reports(
     Returns JSON and CSV files grouped by analysis.
     """
     try:
-        downloader = DownLoad_JSON(output_dir_path="output/")
+        downloader = DownLoad_JSON(db=db)
 
         files = await downloader.show_json_files(tenant_id=current_user.user_id)
+
+        if files is None:
+            files = []
+
         return files
     
     except Exception as e:
@@ -154,13 +194,14 @@ async def list_my_reports(
 )
 async def download_json_report(
     file_name: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Download a specific JSON analysis report.
     Users can only download their own files.
     """
-    downloader = DownLoad_JSON(output_dir_path="output/")
+    downloader = DownLoad_JSON(db=db)
     
     return await downloader.download_json_file(
         tenant_id=current_user.user_id,
@@ -175,13 +216,14 @@ async def download_json_report(
 )
 async def download_csv_summary(
     file_name: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Download a specific CSV summary file.
     Users can only download their own files.
     """
-    downloader = DownLoad_JSON(output_dir_path="output/")
+    downloader = DownLoad_JSON(db=db)
     
     return await downloader.download_csv_file(
         tenant_id=current_user.user_id,
@@ -196,13 +238,14 @@ async def download_csv_summary(
 )
 async def delete_report(
     analysis_name: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Delete both JSON and CSV files for a specific analysis.
     """
     try:
-        downloader = DownLoad_JSON(output_dir_path="output/")
+        downloader = DownLoad_JSON(db=db)
         
         return await downloader.delete_analysis(
             tenant_id=current_user.user_id,
@@ -295,6 +338,41 @@ async def get_my_fraud_rings(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve fraud rings: {str(e)}"
         )
+    
+
+@router.delete(
+    "/index",
+    status_code=status.HTTP_200_OK,
+    tags=["Data Retrieval"]
+)
+async def delete_tenant_index(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Delete the FAISS index for the current user's tenant.
+    """
+    try:
+        service = DataIngestionService(db)
+
+        success = await service.delete_tenant_index(tenant_id=current_user.user_id)
+
+        if success:
+            return {"status": "success", "message": "FAISS index deleted."}
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to delete FAISS index."
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete index: {str(e)}"
+        )
+
 
 
 @router.get(

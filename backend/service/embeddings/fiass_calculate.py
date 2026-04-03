@@ -3,11 +3,20 @@ import json
 import pickle
 import faiss
 import numpy as np
-from typing import List, Dict, Optional, Tuple
-from datetime import datetime
-import logging
 
-from core.config import vector_settings
+from fastapi import (
+    HTTPException, 
+    status
+)
+
+from typing import List, Dict, Optional, Tuple, Any
+from datetime import datetime
+
+from database.model import FaissIndexStore
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -18,43 +27,21 @@ class FAISSVectorStore:
     Each tenant has their own FAISS index that persists across uploads.
     """
 
-    def __init__(self, base_path: str = None):
+    def __init__(self, db: AsyncSession):
         """
         Initialize FAISS vector store.
         
         Args:
             base_path: Base directory for storing FAISS indices
         """
-        self.base_path = base_path or vector_settings.FAISS_PATH
-        os.makedirs(self.base_path, exist_ok=True)
+        self.db = db
         
         # Cache for loaded indices (tenant_id -> {index, metadata})
         self._index_cache: Dict[str, Dict] = {}
         
-        logger.info(f"FAISS Vector Store initialized at {self.base_path}")
+        logger.info(f"FAISS Vector Store initialized")
 
 
-    def _get_tenant_index_path(self, tenant_id: str) -> str:
-        """Get the directory path for a tenant's FAISS index."""
-        tenant_dir = os.path.join(self.base_path, tenant_id)
-        os.makedirs(tenant_dir, exist_ok=True)
-        return tenant_dir
-    
-
-    def _get_index_file_path(self, tenant_id: str) -> str:
-        """Get the FAISS index file path."""
-        return os.path.join(self._get_tenant_index_path(tenant_id), "index.faiss")
-    
-
-    def _get_metadata_file_path(self, tenant_id: str) -> str:
-        """Get the metadata file path."""
-        return os.path.join(self._get_tenant_index_path(tenant_id), "metadata.pkl")
-    
-
-    def _get_documents_file_path(self, tenant_id: str) -> str:
-        """Get the documents file path."""
-        return os.path.join(self._get_tenant_index_path(tenant_id), "documents.json")
-    
 
     def _create_index(self, dimension: int) -> faiss.Index:
         """
@@ -72,9 +59,9 @@ class FAISSVectorStore:
         return index
     
 
-    def _load_index(self, tenant_id: str) -> Optional[Dict]:
+    async def _load_index(self, tenant_id: str) -> Optional[Dict]:
         """
-        Load FAISS index and metadata from disk.
+        Load FAISS index and metadata from database.
         
         Args:
             tenant_id: User ID
@@ -82,49 +69,38 @@ class FAISSVectorStore:
         Returns:
             Dictionary with index, metadata, and documents, or None if not exists
         """
-        index_path = self._get_index_file_path(tenant_id)
-        metadata_path = self._get_metadata_file_path(tenant_id)
-        documents_path = self._get_documents_file_path(tenant_id)
-        
-        if not os.path.exists(index_path):
-            logger.info(f"No existing index found for tenant {tenant_id}")
+
+        query = select(FaissIndexStore).where(FaissIndexStore.tenant_user_id == tenant_id)
+        result = await self.db.execute(query)
+
+        db_store: FaissIndexStore = result.scalar_one_or_none()
+
+        if not db_store:
             return None
-        
-        try:
-            index = faiss.read_index(index_path)
-            
-            with open(metadata_path, 'rb') as f:
-                metadata = pickle.load(f)
-            
-            with open(documents_path, 'r', encoding='utf-8') as f:
-                documents = json.load(f)
-            
-            logger.info(
-                f"Loaded index for tenant {tenant_id}: "
-                f"{index.ntotal} vectors, {len(documents)} documents"
-            )
-            
-            return {
-                "index": index,
-                "metadata": metadata,
-                "documents": documents
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to load index for tenant {tenant_id}: {e}")
-            return None
-        
+
+        index_bytes = np.frombuffer(db_store.faiss_index, dtype=np.uint8)
+        index = faiss.deserialize_index(index_bytes)
+
+        metadata = pickle.loads(db_store.metadata_pkl)
+
+
+        return {
+            "index": index,
+            "metadata": metadata,
+            "documents": db_store.documents
+        }
     
-    # TODO: Update this function to save all index in postgress database
-    def _save_index(
+
+
+    async def _save_index(
         self, 
         tenant_id: str, 
         index: faiss.Index, 
-        metadata: Dict,
+        metadata: Dict[str, Any],
         documents: List[str]
     ) -> None:
         """
-        Save FAISS index and metadata to disk.
+        Save FAISS index and metadata to database.
         
         Args:
             tenant_id: User ID
@@ -132,30 +108,45 @@ class FAISSVectorStore:
             metadata: Metadata dictionary
             documents: List of original documents
         """
-        try:
-            index_path = self._get_index_file_path(tenant_id)
-            metadata_path = self._get_metadata_file_path(tenant_id)
-            documents_path = self._get_documents_file_path(tenant_id)
-            
-            faiss.write_index(index, index_path)
-            
-            with open(metadata_path, 'wb') as f:
-                pickle.dump(metadata, f)
-            
-            with open(documents_path, 'w', encoding='utf-8') as f:
-                json.dump(documents, f, ensure_ascii=False, indent=2)
-            
-            logger.info(
-                f"Saved index for tenant {tenant_id}: "
-                f"{index.ntotal} vectors, {len(documents)} documents"
-            )
-            
+        try: 
+
+            index_bytes = faiss.serialize_index(index).tobytes()
+            metadata_bytes = pickle.dumps(metadata)
+
+            query = select(FaissIndexStore).where(FaissIndexStore.tenant_user_id == tenant_id)
+            result = await self.db.execute(query)
+            existing_store = result.scalar_one_or_none()
+
+            if existing_store:
+                existing_store.documents = documents
+                existing_store.faiss_index = index_bytes
+                existing_store.metadata_pkl = metadata_bytes
+
+            else:
+                new_store = FaissIndexStore(
+                    tenant_user_id=tenant_id,
+                    documents=documents,
+                    faiss_index=index_bytes,
+                    metadata_pkl=metadata_bytes
+                )
+
+                self.db.add(new_store) 
+
+            await self.db.commit()
+
+
         except Exception as e:
+
+            await self.db.rollback()
+
             logger.error(f"Failed to save index for tenant {tenant_id}: {e}")
-            raise
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"someting went wrong: {e}"
+            )
 
 
-    def add_documents(
+    async def add_documents(
         self,
         tenant_id: str,
         embeddings: List[List[float]],
@@ -192,8 +183,9 @@ class FAISSVectorStore:
         if tenant_id in self._index_cache:
             index_data = self._index_cache[tenant_id]
         else:
-            index_data = self._load_index(tenant_id)
-        
+            index_data = await self._load_index(tenant_id)
+
+
         if index_data is None:
             index = self._create_index(dimension)
 
@@ -210,16 +202,16 @@ class FAISSVectorStore:
             }
 
             logger.info(f"Created new index for tenant {tenant_id}")
-
+        
         else:
             logger.info(f"Appending to existing index for tenant {tenant_id}")
-        
+
         start_idx = index_data["index"].ntotal
 
         index_data["index"].add(embeddings_array)
-        
         index_data["documents"].extend(documents)
-        
+
+
         for i, meta in enumerate(metadata):
             doc_meta = {
                 "index": start_idx + i,
@@ -234,15 +226,14 @@ class FAISSVectorStore:
         index_data["metadata"]["total_documents"] = index_data["index"].ntotal
         
         self._index_cache[tenant_id] = index_data
-        
-        # Save to disk
-        self._save_index(
+
+        await self._save_index(
             tenant_id=tenant_id,
             index=index_data["index"],
             metadata=index_data["metadata"],
             documents=index_data["documents"]
         )
-        
+
         stats = {
             "status": "success",
             "tenant_id": tenant_id,
@@ -254,10 +245,11 @@ class FAISSVectorStore:
         }
         
         logger.info(f"Added {len(documents)} documents to tenant {tenant_id}'s index")
-        return stats
-    
 
-    def search(
+        return stats
+
+
+    async def search(
         self,
         tenant_id: str,
         query_embedding: List[float],
@@ -278,7 +270,7 @@ class FAISSVectorStore:
         """
 
         if tenant_id not in self._index_cache:
-            index_data = self._load_index(tenant_id)
+            index_data = await self._load_index(tenant_id)
 
             if index_data is None:
                 logger.warning(f"No index found for tenant {tenant_id}")
@@ -329,7 +321,7 @@ class FAISSVectorStore:
         return results
     
 
-    def get_index_stats(self, tenant_id: str) -> Optional[Dict]:
+    async def get_index_stats(self, tenant_id: str) -> Optional[Dict]:
         """
         Get statistics about tenant's index.
         
@@ -341,7 +333,7 @@ class FAISSVectorStore:
         """
 
         if tenant_id not in self._index_cache:
-            index_data = self._load_index(tenant_id)
+            index_data = await self._load_index(tenant_id)
 
             if index_data is None:
                 return None
@@ -362,30 +354,13 @@ class FAISSVectorStore:
             "total_uploads": index_data["metadata"]["total_uploads"],
             "created_at": index_data["metadata"]["created_at"],
             "last_updated": index_data["metadata"].get("last_updated"),
-            "documents_by_type": doc_types,
-            "index_size_mb": self._get_index_size(tenant_id)
+            "documents_by_type": doc_types
         }
         
         return stats
     
 
-    def _get_index_size(self, tenant_id: str) -> float:
-        """Get the size of tenant's index files in MB."""
-        total_size = 0
-        tenant_dir = self._get_tenant_index_path(tenant_id)
-        
-        if os.path.exists(tenant_dir):
-
-            for filename in os.listdir(tenant_dir):
-                file_path = os.path.join(tenant_dir, filename)
-
-                if os.path.isfile(file_path):
-                    total_size += os.path.getsize(file_path)
-        
-        return round(total_size / (1024 * 1024), 2)
-    
-
-    def delete_index(self, tenant_id: str) -> bool:
+    async def delete_index(self, tenant_id: str) -> bool:
         """
         Delete tenant's entire index.
         
@@ -395,44 +370,28 @@ class FAISSVectorStore:
         Returns:
             True if successful
         """
-        import shutil
         
         if tenant_id in self._index_cache:
             del self._index_cache[tenant_id]
-        
-        tenant_dir = self._get_tenant_index_path(tenant_id)
-        if os.path.exists(tenant_dir):
 
-            try:
-                shutil.rmtree(tenant_dir)
-                logger.info(f"Deleted index for tenant {tenant_id}")
-                return True
-            except Exception as e:
-                logger.error(f"Failed to delete index for tenant {tenant_id}: {e}")
-                return False
+        query = select(FaissIndexStore).where(FaissIndexStore.tenant_user_id == tenant_id)
+        result = await self.db.execute(query)
+
+        db_store = result.scalar_one_or_none()
+
+        if not db_store:
+            return False 
+
+        try: 
+            self.db.delete(db_store)
+            await self.db.commit()
+
+            return True
         
-        return True
-    
-    
-    def list_all_indices(self) -> List[Dict]:
-        """
-        List all tenant indices.
-        
-        Returns:
-            List of dictionaries with tenant index information
-        """
-        indices = []
-        
-        if not os.path.exists(self.base_path):
-            return indices
-        
-        for tenant_id in os.listdir(self.base_path):
-            tenant_dir = os.path.join(self.base_path, tenant_id)
-            if os.path.isdir(tenant_dir):
-                stats = self.get_index_stats(tenant_id)
-                if stats:
-                    indices.append(stats)
-        
-        return indices
-    
-    
+        except Exception as e:
+            
+            await self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"something went wrong: {e}"
+            )
