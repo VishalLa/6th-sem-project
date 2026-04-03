@@ -1,12 +1,13 @@
 import os 
 import logging
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
 from pathlib import Path 
+from typing import Optional
 from dataclasses import dataclass, asdict 
-from typing import List
 
+from sqlalchemy import create_engine 
+from sqlalchemy_utils import database_exists, create_database # pyright: ignore[reportMissingImports]
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -32,7 +33,9 @@ class Settings(BaseSettings):
 
     DEBUG: bool = False
     
-    DATABASE_URI: str = f"sqlite:///{DB_FILE.as_posix()}"
+    # DATABASE_URI: str = f"sqlite:///{DB_FILE.as_posix()}"
+
+    DATABASE_URL: str
     
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
@@ -51,17 +54,51 @@ class Settings(BaseSettings):
     LOG_FORMAT: str = "%(asctime)s %(levelname)s %(name)s %(threadName)s : %(message)s"
 
     def model_post_init(self, __context):
-        if self.DATABASE_URI.startswith("sqlite"):
-            self.SQLALCHEMY_SYNC_DATABASE_URI = self.DATABASE_URI
-            self.SQLALCHEMY_ASYNC_DATABASE_URI = self.DATABASE_URI.replace(
+        if self.DATABASE_URL.startswith("postgres"):
+            base_url = self.DATABASE_URL.replace("postgres://", "postgresql://")
+
+            self.SQLALCHEMY_SYNC_DATABASE_URI = base_url.replace(
+                "postgresql://", "postgresql+psycopg2://"
+            )
+            
+            self.SQLALCHEMY_ASYNC_DATABASE_URI = base_url.replace(
+                "postgresql://", "postgresql+asyncpg://"
+            )
+
+        elif self.DATABASE_URL.startswith("sqlite"):
+            self.SQLALCHEMY_SYNC_DATABASE_URI = self.DATABASE_URL
+
+            self.SQLALCHEMY_ASYNC_DATABASE_URI = self.DATABASE_URL.replace(
                 "sqlite:///", "sqlite+aiosqlite:///"
             )
-        else:
-            self.SQLALCHEMY_SYNC_DATABASE_URI = self.DATABASE_URI
-            self.SQLALCHEMY_ASYNC_DATABASE_URI = self.DATABASE_URI 
+
+        else: 
+            self.SQLALCHEMY_SYNC_DATABASE_URI = self.DATABASE_URL
+            self.SQLALCHEMY_ASYNC_DATABASE_URI = self.DATABASE_URL
 
 settings = Settings()
 
+
+def ensure_database_exists(sync_uri: str) -> None: 
+    """
+    Checks if the PostgreSQL (or SQLite) database exists. 
+    If not, it creates a new database based on the provided URI.
+    """
+
+    if not sync_uri:
+        return 
+    
+    try: 
+        engine = create_engine(sync_uri)
+
+        if not database_exists(engine.url):
+            create_database(engine.url)
+            logging.info(f"Successfully created database at: {engine.url.database}")
+
+    except Exception as e:
+        logging.error(f"Failed to check or create database: {e}")
+
+ensure_database_exists(settings.SQLALCHEMY_SYNC_DATABASE_URI)
 
 
 """

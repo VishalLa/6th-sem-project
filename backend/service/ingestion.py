@@ -5,15 +5,21 @@ from fastapi import (
     HTTPException,
     status
 ) 
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import insert, select
 from datetime import datetime
 from typing import Optional, Dict, List, Tuple
 
 
-from database.model import Transaction, FraudRingSummary 
-from graphs.engine import MainEngine
-from graphs.build_graph import Graph
+from database.model import (
+    Transaction,
+    FraudRingSummary, 
+    JSONStore,
+)
+
+from backend.graphs.engine import MainEngine
+from backend.graphs.build_graph import Graph
 from core.config import vector_settings
 
 from .embeddings.create_vector_db import CPUEmbeddings
@@ -27,12 +33,12 @@ class DataIngestionService:
     Processes CSV files, runs detection, stores in database, and creates tenant-specific FAISS indices.
     """
 
-    CHUNK_SIZE = 10_000
+    CHUNK_SIZE = 1_000
 
     def __init__(self, db: AsyncSession):
         self.db = db 
         self.embedder = CPUEmbeddings(training_mode=False)
-        self.vector_store = FAISSVectorStore()
+        self.vector_store = FAISSVectorStore(self.db)
 
 
     def _create_transaction_documents(self, dataframe: pd.DataFrame, tenant_id: str) -> Tuple[List[str], List[Dict]]:
@@ -332,16 +338,10 @@ class DataIngestionService:
             Dictionary with embedding and storage statistics
         """
         if not documents:
-            # print(f"[{tenant_id}] No documents to embed")
             return {"status": "skipped", "reason": "no_documents"}
-        
-        # print(f"\n[{tenant_id}] 🔄 Embedding {len(documents)} {document_type} documents...")
         
         # Embed documents
         embeddings = self.embedder.embed_documents(documents)
-        
-        # print(f"[{tenant_id}] ✅ Generated {len(embeddings)} embeddings")
-        # print(f"[{tenant_id}] 📊 Embedding dimension: {len(embeddings[0]) if embeddings else 0}")
         
         # Add upload metadata to each document's metadata
         enhanced_metadata = []
@@ -353,8 +353,7 @@ class DataIngestionService:
             enhanced_metadata.append(enhanced_meta)
         
         # Store in FAISS index
-        # print(f"[{tenant_id}] 💾 Storing embeddings in FAISS index...")
-        faiss_stats = self.vector_store.add_documents(
+        faiss_stats = await self.vector_store.add_documents(
             tenant_id=tenant_id,
             embeddings=embeddings,
             documents=documents,
@@ -363,8 +362,8 @@ class DataIngestionService:
         )
         
         # Get index statistics
-        index_stats = self.vector_store.get_index_stats(tenant_id)
-        
+        index_stats = await self.vector_store.get_index_stats(tenant_id)
+
         embedding_stats = {
             "status": "success",
             "document_type": document_type,
@@ -375,8 +374,6 @@ class DataIngestionService:
             "faiss_stats": faiss_stats,
             "index_stats": index_stats
         }
-        
-        # print(f"[{tenant_id}] ✅ Stored in FAISS: {faiss_stats}")
         
         return embedding_stats
 
@@ -534,9 +531,51 @@ class DataIngestionService:
             )
         
 
+    async def _save_json_report(
+        self,
+        json_report: Dict,
+        filename: str,
+        tenant_id: str
+    ) -> None:
+        """
+        Save JSON fraud detection report to JSONStore table.
+        
+        Args:
+            json_report: The fraud detection report dictionary
+            filename: Original filename of the uploaded CSV
+            tenant_id: User ID
+            
+        Raises:
+            HTTPException: If database operation fails
+        """
+
+        try:
+            # Create JSONStore record
+            json_store_record = JSONStore(
+                tenant_user_id=tenant_id,
+                filename=filename,
+                json_data=json_report,
+                uploaded_at=datetime.utcnow()
+            )
+
+            self.db.add(json_store_record)
+            await self.db.commit()
+            await self.db.refresh(json_store_record)
+            
+            return json_store_record.id
+            
+        except Exception as e:
+            await self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to save JSON report: {e}"
+            )
+        
+
     async def _run_fraud_detection(
         self,
         dataframe: pd.DataFrame,
+        filename: str,
         tenant_id: str,
         cycle_length: int = 8, 
         ground_truth_labels: Optional[Dict] = None
@@ -567,6 +606,18 @@ class DataIngestionService:
 
         fraud_rings = report["fraud_rings"]
         account_scores = report["account_scores"]
+        suspicious_accounts = report["suspicious_accounts"]
+        pattern_detections = report["pattern_detections"]
+        summary_info = report["summary"]
+
+        json_report = {
+            "tenant_id": tenant_id,
+            "source_file": filename,
+            "suspicious_accounts": suspicious_accounts,
+            "fraud_rings": fraud_rings,
+            "pattern_detections": pattern_detections,
+            "summary": summary_info
+        }
         
         summary_df = engine.summary_table(
             fraud_rings=fraud_rings,
@@ -576,7 +627,8 @@ class DataIngestionService:
         return {
             "report": report,
             "summary_df": summary_df,
-            "account_scores": account_scores
+            "account_scores": account_scores,
+            "json_report": json_report
         }
 
 
@@ -588,6 +640,7 @@ class DataIngestionService:
         cycle_length: int = 8,
         save_transactions: bool = True,
         save_summary: bool = True,
+        save_json_report: bool = True, 
         embed_transactions: bool = True,
         embed_results: bool = True,
         ground_truth_labels: Optional[Dict] = None
@@ -596,9 +649,9 @@ class DataIngestionService:
         """
         Master pipeline: CSV processing, fraud detection, database storage, and FAISS indexing.
         Each upload appends to the tenant's existing FAISS index.
+        UPDATED: Now saves JSON report to database.
         """
         
-        # print(f"[{tenant_id}] Starting Data Ingestion Pipeline...")
 
         upload_timestamp = datetime.utcnow().isoformat()
 
@@ -624,6 +677,9 @@ class DataIngestionService:
             
             df = pd.read_csv(file_path)
 
+            if filename is None:
+                filename = os.path.basename(file_path)
+
             transaction_embedding_stats = None
             if embed_transactions:
 
@@ -648,11 +704,21 @@ class DataIngestionService:
 
             detection_results = await self._run_fraud_detection(
                 dataframe=df,
+                filename=filename,
                 tenant_id=tenant_id,
                 cycle_length=cycle_length,
                 ground_truth_labels=ground_truth_labels
             )
 
+            json_report_id = None
+            if save_json_report:
+                json_report_id = await self._save_json_report(
+                    json_report=detection_results["json_report"],
+                    filename=filename,
+                    tenant_id=tenant_id
+                )
+
+            # Embed fraud detection results
             detection_embedding_stats = None
             if embed_results:
                 fraud_docs, fraud_meta = self._create_fraud_ring_documents(
@@ -662,7 +728,7 @@ class DataIngestionService:
                 )
                 
                 upload_meta = {
-                    "source_file": filename or os.path.basename(file_path),
+                    "source_file": filename,
                     "upload_timestamp": upload_timestamp,
                     "fraud_rings_detected": len(detection_results["report"]["fraud_rings"]),
                     "suspicious_accounts": len(detection_results["report"]["suspicious_accounts"])
@@ -694,6 +760,7 @@ class DataIngestionService:
                 "transactions_processed": len(df),
                 "suspicious_accounts": len(detection_results["report"]["suspicious_accounts"]),
                 "fraud_rings_detected": len(detection_results["report"]["fraud_rings"]),
+                "json_report_id": json_report_id,
                 "summary": detection_results["report"]["summary"],
                 "pattern_detections": detection_results["report"]["pattern_detections"],
                 "embedding_stats": {
@@ -864,4 +931,80 @@ class DataIngestionService:
             }
             for ring in rings
         ]
+    
+
+    async def get_json_reports(
+        self,
+        tenant_id: str,
+        limit: int = 10,
+        offset: int = 0
+    ) -> list:
+        """
+        Retrieve JSON fraud reports for a specific tenant.
+        
+        Args:
+            tenant_id: User ID
+            limit: Maximum records to return
+            offset: Number of records to skip
+            
+        Returns:
+            List of JSON report records
+        """
+
+        from sqlalchemy import desc 
+        
+        query = select(JSONStore).where(
+            JSONStore.tenant_user_id == tenant_id
+        ).order_by(
+            desc(JSONStore.uploaded_at)
+        ).limit(limit).offset(offset)
+
+        result = await self.db.execute(query)
+        reports = result.scalars().all()
+        
+        return [
+            {
+                "id": report.id,
+                "filename": report.filename,
+                "json_data": report.json_data,
+                "uploaded_at": report.uploaded_at.isoformat() if report.uploaded_at else None
+            }
+            for report in reports
+        ]
+    
+
+    async def get_json_report_by_id(
+        self,
+        report_id: int,
+        tenant_id: str
+    ) -> Optional[Dict]:
+        
+        """
+        Retrieve a specific JSON report by ID.
+        
+        Args:
+            report_id: JSON report ID
+            tenant_id: User ID (for security - ensures user owns the report)
+            
+        Returns:
+            JSON report data or None
+        """
+
+        query = select(JSONStore).where(
+            JSONStore.id == report_id,
+            JSONStore.tenant_user_id == tenant_id
+        )
+        
+        result = await self.db.execute(query)
+        report = result.scalar_one_or_none()
+        
+        if report:
+            return {
+                "id": report.id,
+                "filename": report.filename,
+                "json_data": report.json_data,
+                "uploaded_at": report.uploaded_at.isoformat() if report.uploaded_at else None
+            }
+        
+        return None
     
