@@ -13,8 +13,8 @@ from io import StringIO
 from typing import List, Dict, Optional
 import pandas as pd
 
-from backend.graphs.engine import MainEngine
-from backend.graphs.build_graph import Graph
+from graphs.engine import MainEngine
+from graphs.build_graph import Graph
 
 
 class Detect: 

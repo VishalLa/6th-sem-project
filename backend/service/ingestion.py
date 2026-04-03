@@ -18,8 +18,8 @@ from database.model import (
     JSONStore,
 )
 
-from backend.graphs.engine import MainEngine
-from backend.graphs.build_graph import Graph
+from graphs.engine import MainEngine
+from graphs.build_graph import Graph
 from core.config import vector_settings
 
 from .embeddings.create_vector_db import CPUEmbeddings
