@@ -61,6 +61,23 @@
               </div>
               <!-- Table preview -->
               <div v-if="msg.tableRows?.length" class="table-preview">
+                <div class="table-preview-bar">
+                  <span class="tbl-label">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/>
+                      <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>
+                      <line x1="9" y1="9" x2="9" y2="21"/><line x1="15" y1="9" x2="15" y2="21"/>
+                    </svg>
+                    {{ msg.tableRows.length }} rows
+                  </span>
+                  <button class="btn-open-chat" @click="openInChatTab(msg.tableRows, msg.content)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px">
+                      <polyline points="15 3 21 3 21 9"/><line x1="21" y1="3" x2="14" y2="10"/>
+                      <path d="M10 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-6"/>
+                    </svg>
+                    Open in Chat tab
+                  </button>
+                </div>
                 <table>
                   <thead><tr>
                     <th v-for="h in Object.keys(msg.tableRows[0])" :key="h">{{ h }}</th>
@@ -108,7 +125,10 @@
 
 <script setup>
 import { ref, nextTick, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { chatbotQuery, chatbotHealth } from '@/services/api'
+
+const router     = useRouter()
 
 const open       = ref(false)
 const chatReady  = ref(false)
@@ -183,6 +203,13 @@ async function send() {
 function sendFollowup(text) {
   inputText.value = text
   send()
+}
+
+function openInChatTab(rows, context) {
+  // Store pending table data in sessionStorage so ChatView can pick it up
+  sessionStorage.setItem('chatview_pending_table', JSON.stringify({ rows, context: context || '' }))
+  open.value = false
+  router.push('/chat')
 }
 
 function clearChat() {
@@ -304,6 +331,22 @@ function clearChat() {
   margin-top: 10px; border-radius: 8px; overflow: hidden;
   border: 1px solid rgba(255,255,255,.06); font-size: 11px;
 }
+.table-preview-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 8px; background: rgba(124,58,237,.08);
+  border-bottom: 1px solid rgba(124,58,237,.15);
+}
+.tbl-label {
+  display: flex; align-items: center; gap: 4px;
+  color: var(--accent); font-weight: 600; font-size: 10px;
+}
+.btn-open-chat {
+  display: flex; align-items: center; gap: 4px;
+  background: var(--purple); border: none; color: #fff;
+  font-size: 10px; padding: 3px 8px; border-radius: 5px;
+  cursor: pointer; font-family: var(--font-sans); transition: all .2s;
+}
+.btn-open-chat:hover { background: var(--purple-light); }
 .table-preview table { width: 100%; border-collapse: collapse; }
 .table-preview th {
   padding: 6px 8px; background: rgba(255,255,255,.05);

@@ -7,18 +7,12 @@ from fastapi import (
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from typing import List, Dict, Optional, Any
-import pandas as pd
 import logging
 
 from database.session import get_db
-from database.model import User, Transaction, FraudRingSummary
+from database.model import User
 
 from auth.deps import get_current_user
-
-from service.embeddings.create_vector_db import CPUEmbeddings
-from service.embeddings.fiass_calculate import FAISSVectorStore
-from service.ingestion import DataIngestionService
 
 from schema.chatbout import (
     ChatQueryResponse,
@@ -33,7 +27,6 @@ from chatbot import VECTOR_AVAILABLE
 
 from service.chatbot_service import (
     _chatbot_cache,
-    get_embeddings,
     get_vector_store,
     get_or_create_chatbot,
     convert_table_data

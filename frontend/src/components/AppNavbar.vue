@@ -121,6 +121,7 @@ const tabs = [
   { to: '/summary',      label: 'Summary'      },
   { to: '/metrics',      label: 'Metrics'      },
   { to: '/transactions', label: 'Transactions' },
+  { to: '/chat',         label: '✦ Chat'       },
 ]
 
 const DownloadIcon = defineComponent({
@@ -282,6 +283,16 @@ async function fetchAndExport() {
 }
 .nav-tab:hover { color: var(--text); background: var(--surface2); }
 .nav-tab.active { background: var(--purple); color: #fff; box-shadow: 0 0 20px var(--purple-glow); }
+.nav-tab[href$="/chat"], .nav-tab[href*="#/chat"] {
+  color: var(--accent);
+  border: 1px solid rgba(124,58,237,.3);
+}
+.nav-tab[href$="/chat"].active, .nav-tab[href*="#/chat"].active {
+  background: linear-gradient(135deg, var(--purple), var(--purple-light));
+  box-shadow: 0 0 24px var(--purple-glow);
+  border-color: transparent;
+  color: #fff;
+}
 
 .nav-right { display: flex; align-items: center; gap: 10px; }
 
