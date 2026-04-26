@@ -227,7 +227,7 @@
 
 <script setup>
 import { ref, computed, nextTick, onMounted, watch } from 'vue'
-import { chatbotQuery, chatbotHealth } from '@/services/api'
+import { chatbotQuery, chatbotDatasetInfo } from "@/services/api"
 
 // ── Chat state ────────────────────────────────────────────────────────────────
 const chatReady   = ref(false)
@@ -253,7 +253,7 @@ const tableExamples = [
 ]
 
 onMounted(async () => {
-  try { await chatbotHealth(); chatReady.value = true } catch { chatReady.value = false }
+  try { await chatbotDatasetInfo(); chatReady.value = true } catch { chatReady.value = false }
 
   // Pick up table data forwarded from the floating sidebar
   try {

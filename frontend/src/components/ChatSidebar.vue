@@ -126,7 +126,7 @@
 <script setup>
 import { ref, nextTick, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { chatbotQuery, chatbotHealth } from '@/services/api'
+import { chatbotQuery, chatbotDatasetInfo } from '@/services/api'
 
 const router     = useRouter()
 
@@ -142,7 +142,7 @@ const sessionId  = `session_${Date.now()}`
 
 // Check health on mount
 onMounted(async () => {
-  try { await chatbotHealth(); chatReady.value = true } catch { chatReady.value = false }
+  try { await chatbotDatasetInfo(); chatReady.value = true } catch { chatReady.value = false }
 })
 
 function renderMd(text) {

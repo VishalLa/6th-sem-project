@@ -105,6 +105,30 @@ export const useResultsStore = defineStore('results', () => {
     return result
   })
 
+  // ── Batch management state ────────────────────────────────────────────────
+  const batches       = ref([])   // List of FileBatch summaries from /my-batches
+  const activeBatchId = ref(null) // Currently selected batch_id
+  const lastBatchId   = ref(null) // batch_id from the most recent upload
+
+  function setFromBatches(batchList) {
+    batches.value = batchList || []
+  }
+
+  function setActiveBatch(batchId) {
+    activeBatchId.value = batchId
+  }
+
+  function setLastBatchId(batchId) {
+    lastBatchId.value   = batchId
+    activeBatchId.value = batchId
+  }
+
+  function removeBatch(batchId) {
+    batches.value = batches.value.filter(b => b.batch_id !== batchId)
+    if (activeBatchId.value === batchId) activeBatchId.value = null
+    if (lastBatchId.value   === batchId) lastBatchId.value   = null
+  }
+
   // ── Setters ───────────────────────────────────────────────────────────────
 
   // Old /upload/detect shape: { "file.csv": { report, summary[] } }
@@ -120,8 +144,9 @@ export const useResultsStore = defineStore('results', () => {
     pipelineStats.value = latestStats; error.value = null
   }
 
-  // New /upload/full-pipeline shape: { fraud_rings_summary, detection_results, summary }
+  // New /upload/full-pipeline shape: { batch_id, summary, fraud_rings_detected, … }
   function setFromFullPipeline(data) {
+    if (data.batch_id) setLastBatchId(data.batch_id)
     if (data.fraud_rings_summary?.length) {
       rings.value = data.fraud_rings_summary.map(r => ({ ...r, _file: 'pipeline' }))
     }
@@ -153,14 +178,12 @@ export const useResultsStore = defineStore('results', () => {
                                  ? (Array.isArray(r.member_accounts) ? r.member_accounts.join(', ') : r.member_accounts)
                                  : (r['Member Account IDs'] ?? ''),
       _file: 'db',
-      // keep original for graph rendering
       _raw: r,
     }))
 
     rings.value = normalized
 
-    // Also build a synthetic reportsByFile so GraphView gets data
-    // Reconstruct fraud_rings array in the format GraphView expects
+    // Build a synthetic reportsByFile so GraphView gets data
     const fraudRings = dbRings.map(r => ({
       ring_id:         r.ring_id,
       pattern_type:    r.pattern_type,
@@ -200,6 +223,10 @@ export const useResultsStore = defineStore('results', () => {
     rings, reportsByFile, pipelineStats, loading, error, transactions,
     totalRings, criticalCount, highCount, mediumCount, lowCount, avgScore,
     allFraudRings, graphDataByFile, txMetrics,
+    // Batch management
+    batches, activeBatchId, lastBatchId,
+    setFromBatches, setActiveBatch, setLastBatchId, removeBatch,
+    // Data setters
     setFromDetection, setFromFullPipeline, setFromDBRings, setTransactions, clear
   }
 })

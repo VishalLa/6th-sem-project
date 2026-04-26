@@ -6,6 +6,7 @@ import MetricsView      from '@/views/MetricsView.vue'
 import TransactionsView from '@/views/TransactionsView.vue'
 import AuthView         from '@/views/AuthView.vue'
 import ChatView         from '@/views/ChatView.vue'
+import BatchesView      from '@/views/BatchesView.vue'
 
 const routes = [
   { path: '/auth',         name: 'auth',         component: AuthView,         meta: { public: true } },
@@ -15,6 +16,7 @@ const routes = [
   { path: '/metrics',      name: 'metrics',      component: MetricsView       },
   { path: '/transactions', name: 'transactions', component: TransactionsView  },
   { path: '/chat',         name: 'chat',         component: ChatView          },
+  { path: '/batches',      name: 'batches',      component: BatchesView       },
 ]
 
 const router = createRouter({

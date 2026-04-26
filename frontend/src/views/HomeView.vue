@@ -97,6 +97,9 @@
             <RouterLink to="/metrics" class="btn-nav secondary">
               Metrics →
             </RouterLink>
+            <RouterLink to="/batches" class="btn-nav secondary">
+              📁 Batches →
+            </RouterLink>
           </div>
         </div>
 
@@ -155,7 +158,7 @@
 
 <script setup>
 import { ref, reactive } from 'vue'
-import { uploadFullPipeline, getMyFraudRings, getMyTransactions } from '@/services/api'
+import { uploadFullPipeline, getMyFraudRings, getMyTransactions, getMyBatches } from '@/services/api'
 import { useResultsStore } from '@/stores/results'
 
 const store    = useResultsStore()
@@ -232,15 +235,19 @@ async function run() {
     }
 
     // Always pull canonical data from DB
-    const [ringsRes, txRes] = await Promise.all([
+    const [ringsRes, txRes, batchesRes] = await Promise.all([
       getMyFraudRings(500, 0),
       getMyTransactions(1000, 0),
+      getMyBatches(100, 0),
     ])
     const ringList = ringsRes.data?.fraud_rings || []
     const txList   = txRes.data?.transactions   || []
 
     if (ringList.length) store.setFromDBRings(ringList)
     if (txList.length)   store.setTransactions(txList)
+
+    // Refresh batch list so /batches page is up to date
+    store.setFromBatches(batchesRes.data?.batches || [])
 
     // Build result summary card
     const amounts  = txList.map(t => Number(t.amount) || 0)

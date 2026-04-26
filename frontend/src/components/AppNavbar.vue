@@ -117,6 +117,7 @@ const dlWrap = ref(null)
 
 const tabs = [
   { to: '/',             label: 'Home'         },
+  { to: '/batches',      label: '📁 Batches'   },
   { to: '/graph',        label: 'Graph'        },
   { to: '/summary',      label: 'Summary'      },
   { to: '/metrics',      label: 'Metrics'      },
