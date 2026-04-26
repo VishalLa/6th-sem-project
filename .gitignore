@@ -44,3 +44,7 @@ models/
 
 /temp
 temp/
+
+*.yml
+Dockerfile
+*.conf

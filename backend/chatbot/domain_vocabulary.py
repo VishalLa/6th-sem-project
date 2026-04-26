@@ -131,29 +131,35 @@ COLUMN_ALIASES: Dict[str, str] = {
 # SYNONYM DICTIONARY: synonyms for value matching
 SYNONYM_DICTIONARY: Dict[str, List[str]] = {
     # KYC status
-    "verified": ["verified", "kyc verified", "cleared", "approved", "confirmed"],
-    "pending": ["pending", "under review", "in progress", "awaiting"],
-    "none": ["none", "unverified", "no kyc", "not verified", "unknown"],
+    "verified": ["verified", "kyc verified", "cleared", "approved", "confirmed", "complete"],
+    "pending": ["pending", "under review", "in progress", "awaiting", "incomplete"],
+    "none": [
+        "none", "unverified", "no kyc", "not verified", "unknown",
+        "missing kyc", "no verification", "kyc none", "no kyc status",
+    ],
 
     # Transaction methods
-    "crypto": ["crypto", "cryptocurrency", "bitcoin", "btc", "digital currency", "blockchain"],
-    "wire": ["wire", "wire transfer", "bank wire", "swift", "international transfer"],
-    "ach": ["ach", "automated clearing house", "bank transfer", "direct deposit"],
-    "p2p": ["p2p", "peer to peer", "person to person", "direct transfer"],
+    "crypto": [
+        "crypto", "cryptocurrency", "bitcoin", "btc", "digital currency", "blockchain",
+        "eth", "ethereum", "digital asset",
+    ],
+    "wire": ["wire", "wire transfer", "bank wire", "swift", "international transfer", "telegraphic"],
+    "ach": ["ach", "automated clearing house", "bank transfer", "direct deposit", "eft"],
+    "p2p": ["p2p", "peer to peer", "person to person", "direct transfer", "person-to-person"],
 
     # Countries
     "sg": ["sg", "singapore"],
     "in": ["in", "india"],
     "ae": ["ae", "uae", "dubai", "united arab emirates"],
-    "ng": ["ng", "nigeria"],
-    "ca": ["ca", "canada"],
+    "ng": ["ng", "nigeria", "nigerian"],
+    "ca": ["ca", "canada", "canadian"],
     "uk": ["uk", "united kingdom", "britain", "england", "gb"],
-    "us": ["us", "usa", "united states", "america"],
+    "us": ["us", "usa", "united states", "america", "american"],
 
     # Amount descriptors
-    "high": ["high", "large", "big", "significant", "major", "substantial"],
-    "low": ["low", "small", "minor", "tiny", "minimal"],
-    "round": ["round", "even", "whole", "exact"],
+    "high": ["high", "large", "big", "significant", "major", "substantial", "above"],
+    "low": ["low", "small", "minor", "tiny", "minimal", "below"],
+    "round": ["round", "even", "whole", "exact", "rounded"],
 
     # Time periods
     "today": ["today", "now", "current day"],
@@ -166,49 +172,71 @@ SYNONYM_DICTIONARY: Dict[str, List[str]] = {
 INTENT_KEYWORDS: Dict[str, List[str]] = {
     "show": [
         "show", "display", "list", "get", "fetch", "find", "give me",
-        "tell me", "what are", "which", "view", "see", "look at", "retrieve"
+        "tell me", "what are", "which", "view", "see", "look at", "retrieve",
+        "pull", "lookup", "search", "give", "provide", "return",
+        "what transactions", "show me", "list all", "get me", "i want",
+        "let me see", "bring up", "identify", "highlight",
     ],
     "count": [
         "count", "how many", "number of", "total number", "tally",
-        "how much", "quantity", "how often"
+        "how much", "quantity", "how often",
+        "total count", "count of", "how frequent", "volume", "occurrences",
+        "instances", "number", "amount of records", "how large",
     ],
     "aggregate": [
         "average", "avg", "mean", "sum", "total", "max", "maximum",
-        "min", "minimum", "median", "top", "bottom", "highest", "lowest"
+        "min", "minimum", "median", "top", "bottom", "highest", "lowest",
+        "aggregate", "summarize", "overall", "combined", "cumulative",
+        "total amount", "grand total", "what is the total", "what's the total",
+        "what is the average", "what's the average", "what is the sum",
     ],
     "filter": [
         "where", "with", "having", "that have", "containing", "only",
         "filter", "matching", "equals", "is", "are", "from", "by", "between",
-        "above", "below", "over", "under", "greater", "less"  # ADDED
+        "above", "below", "over", "under", "greater", "less",
+        "using", "via", "through", "sent from", "received by", "involve",
+        "within", "excluding", "include", "without", "except", "specifically",
+        "limited to", "restrict", "narrow", "whose", "that are",
     ],
     "sort": [
         "sort", "order", "rank", "arrange", "ascending", "descending",
-        "highest to lowest", "lowest to highest", "ranked", "top", "bottom"
+        "highest to lowest", "lowest to highest", "ranked", "top", "bottom",
+        "sorted by", "ordered by", "ranked by", "in order of",
+        "by highest", "by lowest", "by most", "by least",
     ],
     "group": [
         "group by", "grouped by", "per", "by country", "by method",
-        "categorize", "breakdown", "split by", "each", "per group"
+        "categorize", "breakdown", "split by", "each", "per group",
+        "by type", "by channel", "by kyc", "by payment", "by sender",
+        "by receiver", "by status", "segment", "partition", "organize by",
+        "distribute by", "classify by", "separate by",
     ],
     "compare": [
         "compare", "vs", "versus", "difference", "between", "contrast",
-        "more than", "less than", "greater", "higher", "lower"
+        "more than", "less than", "greater", "higher", "lower",
+        "relative to", "compared to", "against", "side by side", "ratio of",
     ],
     "fraud": [
         "fraud", "suspicious", "anomaly", "risk", "flagged", "alert",
-        "detect", "unusual", "abnormal", "outlier", "high risk",  
-        "high-risk", "risky", "dangerous", "problematic"  # ADDED
+        "detect", "unusual", "abnormal", "outlier", "high risk",
+        "high-risk", "risky", "dangerous", "problematic",
+        "fraud detection", "suspect", "bad actor", "money laundering",
+        "aml", "kyc none", "unverified", "at risk", "marked", "suspicious activity",
+        "flag", "red flag", "questionable", "irregular", "illicit",
     ],
     "navigate": [
         "go to", "navigate", "open", "jump to", "show page", "chart",
-        "dashboard", "graph", "visualize", "plot"
+        "dashboard", "graph", "visualize", "plot",
     ],
     "math": [
         "calculate", "compute", "growth rate", "percentage", "ratio",
-        "rate", "increase", "decrease", "change", "percent", "multiply", "divide"
+        "rate", "increase", "decrease", "change", "percent", "multiply", "divide",
+        "proportion", "share", "fraction", "breakdown percentage",
     ],
     "help": [
         "help", "what can you do", "how do i", "explain", "what is",
-        "describe", "guide", "tutorial", "capabilities"
+        "describe", "guide", "tutorial", "capabilities",
+        "how to", "what can", "tell me about", "instructions", "usage",
     ],
 }
 

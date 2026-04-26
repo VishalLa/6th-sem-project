@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-CONFIDENCE_THRESHOLD = 0.4
+CONFIDENCE_THRESHOLD = 0.35
 
 
 CLARIFICATION_TEMPLATES = {

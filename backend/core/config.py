@@ -11,18 +11,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-# database folder
-DB_DIR = BASE_DIR / "db"
-DB_FILE = DB_DIR / "app.db"
+# # database folder
+# DB_DIR = BASE_DIR / "db"
+# DB_FILE = DB_DIR / "app.db"
 
-DB_DIR.mkdir(parents=True, exist_ok=True)
+# DB_DIR.mkdir(parents=True, exist_ok=True)
 
-if not DB_FILE.exists():
-    DB_FILE.touch()
+# if not DB_FILE.exists():
+#     DB_FILE.touch()
 
-FAISS_DIR = BASE_DIR / "faiss_store"
-CACHE_DIR = BASE_DIR / "cache"
-MODEL_DIR = BASE_DIR / "models" / "e5_small_v2"
+FAISS_DIR = BASE_DIR / "backend/faiss_store"
+CACHE_DIR = BASE_DIR / "backend/cache"
+MODEL_DIR = BASE_DIR / "backend/models" / "e5_small_v2"
 
 FAISS_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_DIR.mkdir(parents=True, exist_ok=True)

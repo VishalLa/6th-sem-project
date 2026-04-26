@@ -74,9 +74,11 @@ class DataExecutor:
                 return self.execute_aggregation(query_spec)
             elif operation == "COUNT":
                 return self.execute_count(query_spec)
-            elif operation in ("SORT", "SELECT", "FILTER", "COMPARE"):
+            elif operation in ("SORT", "SELECT", "FILTER", "COMPARE", "COMPARE"):
                 return self.execute_ranking(query_spec)
             else:
+                # Unknown operation — fall back to a ranked SELECT
+                logger.warning(f"Unknown operation '{operation}', falling back to SELECT")
                 return self.execute_ranking(query_spec)
 
         except Exception as e:
@@ -378,10 +380,11 @@ class DataExecutor:
     def execute_fraud_detection(self, query_spec: Dict) -> Dict:
         """
         Identify potentially fraudulent transactions using rule-based signals.
-        IMPROVED: Better error handling.
+        IMPROVED: Normalised 0-100 risk_score, richer flag explanations,
+        and better handling of pre-existing risk_score column.
         """
         df = self._apply_filters(self.df, query_spec)
-        
+
         flagged_df = df.copy()
         flagged_df["risk_flags"] = ""
         flagged_df["risk_score"] = 0
@@ -390,60 +393,63 @@ class DataExecutor:
             flags = []
             score = 0
 
-            # Unverified KYC
+            # Unverified KYC  (max contribution: 30 pts)
             kyc = str(row.get("sender_kyc", "")).strip().lower()
             if kyc in ("none", "nan", ""):
                 flags.append("No KYC")
-                score += 3
+                score += 30
             elif kyc == "pending":
                 flags.append("Pending KYC")
-                score += 1
+                score += 10
 
-            # Round amount
+            # Round amount  (max: 10 pts)
             if row.get("is_round_amount", False):
                 flags.append("Round Amount")
-                score += 1
+                score += 10
 
-            # High amount
+            # High amount  (max: 20 pts)
             try:
                 amt = float(row.get("amount", 0))
                 if amt > FRAUD_AMOUNT_THRESHOLD:
                     flags.append(f"High Amount (${amt:.2f})")
-                    score += 2
+                    score += 20
             except (ValueError, TypeError):
                 pass
 
-            # New account
+            # New account  (max: 20 pts)
             try:
                 acct_age = float(row.get("sender_acct_age", 999))
                 if acct_age < FRAUD_NEW_ACCOUNT_DAYS:
                     flags.append(f"New Account ({int(acct_age)}d)")
-                    score += 2
+                    score += 20
             except (ValueError, TypeError):
                 pass
 
-            # High velocity
+            # High velocity  (max: 20 pts)
             try:
                 vel = row.get("velocity_mins", None)
                 if vel is not None and not pd.isna(vel):
                     vel_f = float(vel)
                     if vel_f < FRAUD_VELOCITY_THRESHOLD:
                         flags.append(f"High Velocity ({vel_f:.1f}min)")
-                        score += 2
+                        score += 20
             except (ValueError, TypeError):
                 pass
 
-            # High-risk country pair
+            # High-risk country pair  (max: 20 pts)
             sc = str(row.get("sender_country", "")).upper()
             rc = str(row.get("receiver_country", "")).upper()
             if (sc, rc) in HIGH_RISK_COUNTRY_PAIRS:
                 flags.append(f"High-Risk Route ({sc}→{rc})")
-                score += 2
+                score += 20
+
+            # Normalise to 0-100 scale (max raw = 100)
+            normalised = min(score, 100)
 
             flagged_df.at[idx, "risk_flags"] = " | ".join(flags)
-            flagged_df.at[idx, "risk_score"] = score
+            flagged_df.at[idx, "risk_score"] = normalised
 
-        # Filter to only flagged rows
+        # Filter to only flagged rows (risk_score > 0) and sort descending
         result = flagged_df[flagged_df["risk_score"] > 0].sort_values(
             "risk_score", ascending=False
         )

@@ -112,24 +112,32 @@ class EnhancedQueryAnalyzer:
     # ------------------------------------------------------------------
     _PRIORITY_RULES = [
         # COUNT
-        (["how many", "number of", "total number", "count of"],
+        (["how many", "number of", "total number", "count of", "how much", "total count"],
          "COUNT", "COUNT"),
         # AGGREGATE / AVG
-        (["average", "avg", "mean"],
+        (["average", "avg", "mean", "what is the average", "what's the average"],
          "AGGREGATE", "AVG"),
+        # AGGREGATE / MAX
+        (["highest amount", "maximum amount", "largest amount", "max amount"],
+         "AGGREGATE", "MAX"),
+        # AGGREGATE / MIN
+        (["lowest amount", "minimum amount", "smallest amount", "min amount"],
+         "AGGREGATE", "MIN"),
         # AGGREGATE / SUM
         (["total amount", "sum of", "what is the total", "overall amount",
-          "what's the total"],
+          "what's the total", "cumulative amount", "grand total"],
          "AGGREGATE", "SUM"),
         # GROUP_BY
         (["group by", "group transactions by", "breakdown by", "split by",
           "by sender country", "by receiver country", "by payment method",
-          "by txn method", "by method", "by country",
-          "per country", "per method"],
+          "by txn method", "by method", "by country", "by kyc", "by channel",
+          "per country", "per method", "breakdown of", "categorize by",
+          "organize by", "distribute by", "classify by"],
          "GROUP_BY", None),
         # FRAUD
         (["suspicious", "fraud", "anomal", "risky", "high-risk",
-          "high risk", "flagged", "risk"],
+          "high risk", "flagged", "flag", "risk", "detect", "money laundering",
+          "aml", "illicit", "at risk", "red flag", "suspicious activity"],
          "FRAUD_DETECT", None),
     ]
 
@@ -171,11 +179,13 @@ class EnhancedQueryAnalyzer:
         # ------------------------------------------------------------------
         operation_type = None
         forced_aggregation = None
+        priority_rule_matched = False
 
         for triggers, op, agg in self._PRIORITY_RULES:
             if any(t in text_lower or t in raw_lower for t in triggers):
                 operation_type = op
                 forced_aggregation = agg
+                priority_rule_matched = True
                 logger.debug(f"Priority rule matched: op={op}, agg={agg}")
                 break
 
@@ -205,7 +215,8 @@ class EnhancedQueryAnalyzer:
 
         # Calculate confidence
         confidence = self._calculate_confidence(
-            intent_domain, keywords, entities, operation_type, text, raw_lower
+            intent_domain, keywords, entities, operation_type, text, raw_lower,
+            priority_rule_matched=priority_rule_matched
         )
 
         # UI action
@@ -369,72 +380,139 @@ class EnhancedQueryAnalyzer:
         operation_type: str,
         text: str,
         raw_lower: str = "",
+        priority_rule_matched: bool = False,
     ) -> float:
         """
         Calculate overall confidence score for the analysis.
-        Always returns a value in [0.0, 1.0] so the API response always
-        includes a meaningful confidence field.
+        REWRITTEN: Cumulative boosts, higher base floor, domain-signal bonus,
+        multi-signal bonus, priority-rule bonus.  Always returns [0.0, 1.0].
         """
-        score = 0.0
         text_lower = text.lower()
-        combined = text_lower + " " + raw_lower  # check both corrected + original
+        combined = text_lower + " " + raw_lower
 
-        # Base: intent confidence (0–0.25)
-        intent_conf = intent_domain.get("confidence", 0.3)
-        score += intent_conf * 0.25
+        # ----------------------------------------------------------------
+        # 1. BASE FLOOR — any coherent domain query starts at 0.40
+        # ----------------------------------------------------------------
+        score = 0.40
 
-        # Column matches (0–0.20)
+        # ----------------------------------------------------------------
+        # 2. INTENT CONFIDENCE  (already base-adjusted in query_analysis.py)
+        #    Contribute a proportional bonus above the base.
+        #    intent_conf is already in [0.35, 1.0] after our fix there.
+        # ----------------------------------------------------------------
+        intent_conf = intent_domain.get("confidence", 0.50)
+        # Map [0.35, 1.0] → additional [0, 0.15]
+        intent_bonus = (intent_conf - 0.35) / 0.65 * 0.15
+        score += max(intent_bonus, 0.0)
+
+        # ----------------------------------------------------------------
+        # 3. COLUMN SIGNAL  (+0.08 per column, max +0.16)
+        # ----------------------------------------------------------------
         col_count = len(keywords.get("columns", {}))
-        score += min(col_count * 0.10, 0.20)
+        score += min(col_count * 0.08, 0.16)
 
-        # Filter matches (0–0.15)
+        # ----------------------------------------------------------------
+        # 4. FILTER SIGNAL  (+0.07 per filter, max +0.14)
+        # ----------------------------------------------------------------
         filter_count = len(keywords.get("filters", []))
-        score += min(filter_count * 0.075, 0.15)
+        score += min(filter_count * 0.07, 0.14)
 
-        # Entity matches (0–0.10)
+        # ----------------------------------------------------------------
+        # 5. ENTITY SIGNAL  (+0.05 per entity, max +0.10)
+        # ----------------------------------------------------------------
         entity_count = sum(
             len(v) if isinstance(v, list) else 1 for v in entities.values()
         )
         score += min(entity_count * 0.05, 0.10)
 
-        # Pattern boosts — applied cumulatively (not just first match)
+        # ----------------------------------------------------------------
+        # 6. MULTI-SIGNAL BONUS — queries that have BOTH column + filter
+        #    signals are very well understood; reward them.
+        # ----------------------------------------------------------------
+        if col_count >= 1 and filter_count >= 1:
+            score += 0.08
+        if col_count >= 1 and entity_count >= 1:
+            score += 0.05
+
+        # ----------------------------------------------------------------
+        # 7. PRIORITY RULE BONUS — a priority-rule match means we identified
+        #    the operation with near-certainty.
+        # ----------------------------------------------------------------
+        if priority_rule_matched:
+            score += 0.12
+
+        # ----------------------------------------------------------------
+        # 8. PATTERN BOOSTS — ALL matching patterns add up (no break).
+        #    Each pattern boost is smaller than before to avoid runaway scores.
+        # ----------------------------------------------------------------
         pattern_boosts = [
-            ("how many",            0.30),
-            ("what is the average", 0.30),
-            ("average",             0.25),
-            ("what is the total",   0.30),
-            ("total amount",        0.25),
-            ("show me",             0.20),
-            ("list all",            0.20),
-            ("total",               0.15),
-            ("count",               0.20),
-            ("high-risk",           0.25),
-            ("high risk",           0.25),
-            ("suspicious",          0.25),
-            ("fraud",               0.25),
-            ("group by",            0.20),
-            ("by country",          0.20),
-            ("by method",           0.20),
-            ("above",               0.15),
-            ("below",               0.15),
-            ("greater than",        0.15),
+            # COUNT patterns
+            ("how many",              0.12),
+            ("number of",             0.10),
+            ("count of",              0.10),
+            ("total count",           0.10),
+            # AGGREGATE patterns
+            ("what is the average",   0.12),
+            ("what's the average",    0.12),
+            ("average",               0.08),
+            ("what is the total",     0.12),
+            ("what's the total",      0.12),
+            ("total amount",          0.10),
+            ("sum of",                0.10),
+            # SHOW/FILTER patterns
+            ("show me",               0.08),
+            ("list all",              0.08),
+            ("find all",              0.08),
+            # FRAUD patterns
+            ("high-risk",             0.10),
+            ("high risk",             0.10),
+            ("suspicious",            0.10),
+            ("fraud",                 0.10),
+            ("flagged",               0.08),
+            # GROUP patterns
+            ("group by",              0.10),
+            ("breakdown by",          0.10),
+            ("by country",            0.08),
+            ("by method",             0.08),
+            ("by kyc",                0.08),
+            # FILTER qualifiers
+            ("above",                 0.06),
+            ("below",                 0.06),
+            ("greater than",          0.06),
+            ("less than",             0.06),
+            ("where",                 0.05),
+            ("from",                  0.04),
+            # SORT qualifiers
+            ("top",                   0.06),
+            ("bottom",                0.06),
+            ("sorted by",             0.07),
+            ("ordered by",            0.07),
         ]
 
-        boosted = False
         for pattern, boost in pattern_boosts:
             if pattern in combined:
                 score += boost
-                boosted = True
                 logger.debug(f"Confidence boost +{boost} for pattern '{pattern}'")
-                break  # one boost only — prevents runaway scores
 
-        # Fallback floor: any valid operation still gets a base score
-        if not boosted and operation_type not in ("HELP",):
-            score += 0.20
-
-        # Numeric conditions boost
+        # ----------------------------------------------------------------
+        # 9. NUMERIC CONDITIONS BONUS
+        # ----------------------------------------------------------------
         if keywords.get("numeric_conditions"):
-            score += 0.15
+            score += 0.08
+
+        # ----------------------------------------------------------------
+        # 10. DOMAIN SIGNAL BONUS — query contains recognisable domain terms
+        # ----------------------------------------------------------------
+        domain_terms = [
+            "transaction", "transfer", "payment", "sender", "receiver",
+            "amount", "kyc", "fraud", "risk", "country", "method", "channel",
+            "crypto", "wire", "ach", "p2p", "velocity", "account", "device",
+        ]
+        domain_hit_count = sum(1 for t in domain_terms if t in combined)
+        if domain_hit_count >= 3:
+            score += 0.08
+        elif domain_hit_count >= 1:
+            score += 0.04
 
         return round(min(score, 1.0), 2)
     

@@ -100,7 +100,9 @@ class IntentDomainDetector:
         primary = sorted_intents[0][0]
         max_score = sorted_intents[0][1]
         total_score = sum(intent_scores.values())
-        confidence = min(max_score / max(total_score, 1), 1.0)
+
+        raw_ratio = max_score / max(total_score, 1)
+        confidence = min(raw_ratio * 0.65 + 0.35, 1.0)
 
         return {
             "primary_intent": primary,

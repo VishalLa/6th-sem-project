@@ -16,6 +16,7 @@ from database.model import (
     Transaction,
     FraudRingSummary, 
     JSONStore,
+    FileBatch
 )
 
 from graphs.engine import MainEngine
@@ -39,6 +40,57 @@ class DataIngestionService:
         self.db = db 
         self.embedder = CPUEmbeddings(training_mode=False)
         self.vector_store = FAISSVectorStore(self.db)
+
+
+    async def _create_file_batch(self, tenant_id: str) -> str:
+        """
+        Insert a new FileBatch row and return its batch_id.
+
+        Args:
+            tenant_id: The owning user's UUID
+
+        Returns:
+            The newly-created batch_id string
+
+        Raises:
+            HTTPException 500 if the insert fails
+        """
+        try:
+            batch = FileBatch(tenant_user_id=tenant_id)
+            self.db.add(batch)
+
+            await self.db.flush()
+            batch_id = batch.batch_id
+
+            await self.db.commit()
+            return batch_id
+
+        except Exception as e:
+            await self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create file batch: {e}"
+            )
+        
+
+    async def _get_batch_ids_for_tenant(self, tenant_id: str) -> List[str]:
+        """
+        Return all batch_ids that belong to a tenant, newest first.
+
+        Args:
+            tenant_id: User UUID
+
+        Returns:
+            List of batch_id strings
+        """
+        from sqlalchemy import desc
+
+        result = await self.db.execute(
+            select(FileBatch.batch_id)
+            .where(FileBatch.tenant_user_id == tenant_id)
+            .order_by(desc(FileBatch.uploaded_at))
+        )
+        return [row[0] for row in result.all()]
 
 
     def _create_transaction_documents(self, dataframe: pd.DataFrame, tenant_id: str) -> Tuple[List[str], List[Dict]]:
@@ -322,6 +374,7 @@ class DataIngestionService:
         metadata: List[Dict],
         document_type: str,
         tenant_id: str,
+        batch_id: str,
         upload_metadata: Optional[Dict] = None
     ) -> Dict:
         """
@@ -331,14 +384,18 @@ class DataIngestionService:
             documents: List of text documents to embed
             metadata: List of metadata dictionaries (one per document)
             document_type: Type of documents ('transactions' or 'fraud_detection')
-            tenant_id: User ID
+            batch_id: The ID of the specific file upload/batch
+            tenant_id: User ID (used to verify ownership of the batch)
             upload_metadata: Additional metadata about the upload
             
         Returns:
             Dictionary with embedding and storage statistics
         """
         if not documents:
-            return {"status": "skipped", "reason": "no_documents"}
+            return {
+                "status": "skipped", 
+                "reason": "no_documents"
+            }
         
         # Embed documents
         embeddings = self.embedder.embed_documents(documents)
@@ -355,6 +412,7 @@ class DataIngestionService:
         # Store in FAISS index
         faiss_stats = await self.vector_store.add_documents(
             tenant_id=tenant_id,
+            batch_id=batch_id,
             embeddings=embeddings,
             documents=documents,
             metadata=enhanced_metadata,
@@ -362,7 +420,7 @@ class DataIngestionService:
         )
         
         # Get index statistics
-        index_stats = await self.vector_store.get_index_stats(tenant_id)
+        index_stats = await self.vector_store.get_index_stats(tenant_id, batch_id)
 
         embedding_stats = {
             "status": "success",
@@ -381,42 +439,54 @@ class DataIngestionService:
     async def _bulk_insert_transactions(
         self, 
         dataframe: pd.DataFrame, 
-        tenant_id: str
+        batch_id: str
     ) -> None:
         """
-        Upserts transaction rows — skips rows whose transaction_id already exists
-        for this tenant so re-uploading the same file does not create duplicates.
+        Upserts transaction rows scoped to a FileBatch.
+        Deletes then re-inserts rows whose transaction_id already exists
+        in this batch so re-uploading the same file does not create duplicates.
 
         Args:
             dataframe: Transaction data from CSV
-            tenant_id: User ID from User table
+            batch_id:  Parent FileBatch UUID
 
         Raises:
-            HTTPException: If database operation fails
+            HTTPException 500 if the database operation fails
         """
         from sqlalchemy import delete as sa_delete
 
         df = dataframe.copy()
-        df['tenant_user_id'] = tenant_id
+
+        df.columns = [str(col).strip().lower().replace(" ", "_") for col in df.columns]
+        df['batch_id'] = batch_id
+
+        mandatory_columns = ['transaction_id', 'sender', 'receiver', 'amount', 'timestamp']
+        missing_columns = [col for col in mandatory_columns if col not in df.columns]
+
+        if missing_columns:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"CSV is missing required columns: {', '.join(missing_columns)}. Found columns: {', '.join(df.columns)}"
+            )
 
         if 'timestamp' in df.columns:
             df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
 
         column_mapping = {
-            'transaction_id': 'transaction_id',
-            'sender': 'sender',
-            'receiver': 'receiver',
-            'amount': 'amount',
-            'timestamp': 'timestamp',
-            'sender_country': 'sender_country',
+            'transaction_id':   'transaction_id',
+            'sender':           'sender',
+            'receiver':         'receiver',
+            'amount':           'amount',
+            'timestamp':        'timestamp',
+            'sender_country':   'sender_country',
             'receiver_country': 'receiver_country',
-            'sender_kyc': 'sender_kyc',
-            'txn_method': 'txn_method',
-            'device_id': 'device_id',
-            'sender_acct_age': 'sender_acct_age',
-            'velocity_mins': 'velocity_mins',
-            'is_round_amount': 'is_round_amount',
-            'tenant_user_id': 'tenant_user_id'
+            'sender_kyc':       'sender_kyc',
+            'txn_method':       'txn_method',
+            'device_id':        'device_id',
+            'sender_acct_age':  'sender_acct_age',
+            'velocity_mins':    'velocity_mins',
+            'is_round_amount':  'is_round_amount',
+            'batch_id':         'batch_id',
         }
 
         available_cols = [col for col in column_mapping.keys() if col in df.columns]
@@ -435,7 +505,7 @@ class DataIngestionService:
                 # Delete existing rows for these exact transaction IDs under this tenant
                 await self.db.execute(
                     sa_delete(Transaction).where(
-                        Transaction.tenant_user_id == tenant_id,
+                        Transaction.batch_id == batch_id,
                         Transaction.transaction_id.in_(incoming_ids)
                     )
                 )
@@ -457,21 +527,19 @@ class DataIngestionService:
     async def _bulk_insert_summary(
         self, 
         summary_df: pd.DataFrame, 
-        tenant_id: str
+        batch_id: str
     ):
         """
-        Upserts fraud ring summaries into the database.
-        Deletes any existing rings for this tenant first so that re-uploading
-        a new file always reflects the latest detection results (no stale rings).
-        Uses INSERT OR REPLACE semantics to handle the primary-key conflict that
-        caused the 500 error when the same file was uploaded more than once.
+        Upserts fraud ring summaries scoped to a FileBatch.
+        Deletes existing rings for this batch first so re-uploading always
+        reflects the latest detection results.
 
         Args:
             summary_df: Summary DataFrame from MainEngine.summary_table()
-            tenant_id: User ID from User table
+            batch_id:   Parent FileBatch UUID
 
         Raises:
-            HTTPException: If database operation fails
+            HTTPException 500 if the database operation fails
         """
         from sqlalchemy import delete
 
@@ -479,22 +547,22 @@ class DataIngestionService:
             return
 
         df = summary_df.copy()
-        df['tenant_user_id'] = tenant_id
+        df['batch_id'] = batch_id
         df['created_at'] = datetime.utcnow()
 
         column_mapping = {
-            "Ring ID": "ring_id",
-            "Pattern Type": "pattern_type",
-            "Member Count": "member_count",
-            "Risk Score": "risk_score",
-            "Risk Category": "risk_category",
-            "Member Account IDs": "member_accounts"
+            "Ring ID":            "ring_id",
+            "Pattern Type":       "pattern_type",
+            "Member Count":       "member_count",
+            "Risk Score":         "risk_score",
+            "Risk Category":      "risk_category",
+            "Member Account IDs": "member_accounts",
         }
         df = df.rename(columns=column_mapping)
 
         db_columns = [
+            'batch_id',
             'ring_id',
-            'tenant_user_id',
             'pattern_type',
             'member_count',
             'risk_score',
@@ -514,9 +582,7 @@ class DataIngestionService:
 
         try:
             await self.db.execute(
-                delete(FraudRingSummary).where(
-                    FraudRingSummary.tenant_user_id == tenant_id
-                )
+                delete(FraudRingSummary).where(FraudRingSummary.batch_id == batch_id)
             )
 
             stmt = insert(FraudRingSummary).values(records)
@@ -535,24 +601,27 @@ class DataIngestionService:
         self,
         json_report: Dict,
         filename: str,
-        tenant_id: str
+        batch_id: str
     ) -> None:
         """
         Save JSON fraud detection report to JSONStore table.
-        
+
         Args:
             json_report: The fraud detection report dictionary
-            filename: Original filename of the uploaded CSV
-            tenant_id: User ID
-            
+            filename:    Original filename of the uploaded CSV
+            batch_id:    Parent FileBatch UUID
+
+        Returns:
+            The new JSONStore row id
+
         Raises:
-            HTTPException: If database operation fails
+            HTTPException 500 if the database operation fails
         """
 
         try:
             # Create JSONStore record
             json_store_record = JSONStore(
-                tenant_user_id=tenant_id,
+                batch_id=batch_id,
                 filename=filename,
                 json_data=json_report,
                 uploaded_at=datetime.utcnow()
@@ -604,19 +673,19 @@ class DataIngestionService:
 
         report = engine.run_full_pipeline(compute_metrics=ground_truth_labels is not None)
 
-        fraud_rings = report["fraud_rings"]
-        account_scores = report["account_scores"]
+        fraud_rings         = report["fraud_rings"]
+        account_scores      = report["account_scores"]
         suspicious_accounts = report["suspicious_accounts"]
-        pattern_detections = report["pattern_detections"]
-        summary_info = report["summary"]
+        pattern_detections  = report["pattern_detections"]
+        summary_info        = report["summary"]
 
         json_report = {
-            "tenant_id": tenant_id,
-            "source_file": filename,
-            "suspicious_accounts": suspicious_accounts,
-            "fraud_rings": fraud_rings,
-            "pattern_detections": pattern_detections,
-            "summary": summary_info
+            "tenant_id":            tenant_id,
+            "source_file":          filename,
+            "suspicious_accounts":  suspicious_accounts,
+            "fraud_rings":          fraud_rings,
+            "pattern_detections":   pattern_detections,
+            "summary":              summary_info,
         }
         
         summary_df = engine.summary_table(
@@ -625,10 +694,10 @@ class DataIngestionService:
         )
 
         return {
-            "report": report,
-            "summary_df": summary_df,
+            "report":         report,
+            "summary_df":     summary_df,
             "account_scores": account_scores,
-            "json_report": json_report
+            "json_report":    json_report,
         }
 
 
@@ -675,6 +744,8 @@ class DataIngestionService:
                     detail=f"File not found: {file_path}"
                 )
             
+            batch_id = await self._create_file_batch(tenant_id=tenant_id)
+            
             df = pd.read_csv(file_path)
 
             if filename is None:
@@ -696,11 +767,12 @@ class DataIngestionService:
                     metadata=transaction_meta,
                     document_type="transactions",
                     tenant_id=tenant_id,
+                    batch_id=batch_id,
                     upload_metadata=upload_meta
                 )
 
             if save_transactions:
-                await self._bulk_insert_transactions(dataframe=df, tenant_id=tenant_id)
+                await self._bulk_insert_transactions(dataframe=df, batch_id=batch_id)
 
             detection_results = await self._run_fraud_detection(
                 dataframe=df,
@@ -715,7 +787,7 @@ class DataIngestionService:
                 json_report_id = await self._save_json_report(
                     json_report=detection_results["json_report"],
                     filename=filename,
-                    tenant_id=tenant_id
+                    batch_id=batch_id
                 )
 
             # Embed fraud detection results
@@ -728,16 +800,17 @@ class DataIngestionService:
                 )
                 
                 upload_meta = {
-                    "source_file": filename,
-                    "upload_timestamp": upload_timestamp,
+                    "source_file":          filename,
+                    "upload_timestamp":     upload_timestamp,
                     "fraud_rings_detected": len(detection_results["report"]["fraud_rings"]),
-                    "suspicious_accounts": len(detection_results["report"]["suspicious_accounts"])
+                    "suspicious_accounts":  len(detection_results["report"]["suspicious_accounts"]),
                 }
                 
                 detection_embedding_stats = await self._embed_and_store_documents(
                     documents=fraud_docs,
                     metadata=fraud_meta,
                     document_type="fraud_detection",
+                    batch_id=batch_id,
                     tenant_id=tenant_id,
                     upload_metadata=upload_meta
                 )
@@ -745,7 +818,7 @@ class DataIngestionService:
             if save_summary:
                 await self._bulk_insert_summary(
                     summary_df=detection_results["summary_df"],
-                    tenant_id=tenant_id
+                    batch_id=batch_id
                 )
 
             if os.path.exists(file_path):
@@ -753,21 +826,22 @@ class DataIngestionService:
 
 
             return {
-                "status": "success",
-                "tenant_id": tenant_id,
-                "tenant_email": user.email_id,
-                "tenant_organization": user.organization,
+                "status":                "success",
+                "tenant_id":             tenant_id,
+                "batch_id":              batch_id,
+                "tenant_email":          user.email_id,
+                "tenant_organization":   user.organization,
                 "transactions_processed": len(df),
-                "suspicious_accounts": len(detection_results["report"]["suspicious_accounts"]),
-                "fraud_rings_detected": len(detection_results["report"]["fraud_rings"]),
-                "json_report_id": json_report_id,
-                "summary": detection_results["report"]["summary"],
-                "pattern_detections": detection_results["report"]["pattern_detections"],
+                "suspicious_accounts":   len(detection_results["report"]["suspicious_accounts"]),
+                "fraud_rings_detected":  len(detection_results["report"]["fraud_rings"]),
+                "json_report_id":        json_report_id,
+                "summary":               detection_results["report"]["summary"],
+                "pattern_detections":    detection_results["report"]["pattern_detections"],
                 "embedding_stats": {
                     "transaction_embeddings": transaction_embedding_stats,
-                    "detection_embeddings": detection_embedding_stats,
-                    "total_cache_size": self.embedder.get_cache_size()
-                }
+                    "detection_embeddings":   detection_embedding_stats,
+                    "total_cache_size":       self.embedder.get_cache_size(),
+                },
             }
 
 
@@ -831,14 +905,14 @@ class DataIngestionService:
             await file.close()
 
     
-    async def get_tenant_index_stats(self, tenant_id: str) -> Optional[Dict]:
+    async def get_tenant_index_stats(self, tenant_id: str, batch_id: str) -> Optional[Dict]:
         """Get statistics about tenant's FAISS index."""
-        return self.vector_store.get_index_stats(tenant_id)
+        return self.vector_store.get_index_stats(tenant_id, batch_id)
 
 
-    async def delete_tenant_index(self, tenant_id: str) -> bool:
+    async def delete_tenant_index(self, tenant_id: str, batch_id: str) -> bool:
         """Delete tenant's entire FAISS index."""
-        return self.vector_store.delete_index(tenant_id)
+        return self.vector_store.delete_index(tenant_id, batch_id)
 
 
     async def get_user_transactions(
@@ -862,7 +936,8 @@ class DataIngestionService:
 
         stmt = (
             select(Transaction)
-            .where(Transaction.tenant_user_id == tenant_id)
+            .join(Transaction.batch)
+            .where(FileBatch.tenant_user_id == tenant_id)
             .order_by(desc(Transaction.timestamp))
             .limit(limit)
             .offset(offset)
@@ -873,17 +948,18 @@ class DataIngestionService:
         
         return [
             {
-                "id": txn.id,
-                "transaction_id": txn.transaction_id,
-                "sender": txn.sender,
-                "receiver": txn.receiver,
-                "amount": float(txn.amount) if txn.amount else None,
-                "timestamp": txn.timestamp.isoformat() if txn.timestamp else None,
-                "sender_country": txn.sender_country,
+                "id":               txn.id,
+                "batch_id":         txn.batch_id,
+                "transaction_id":   txn.transaction_id,
+                "sender":           txn.sender,
+                "receiver":         txn.receiver,
+                "amount":           float(txn.amount) if txn.amount else None,
+                "timestamp":        txn.timestamp.isoformat() if txn.timestamp else None,
+                "sender_country":   txn.sender_country,
                 "receiver_country": txn.receiver_country,
-                "sender_kyc": txn.sender_kyc,
-                "txn_method": txn.txn_method,
-                "device_id": txn.device_id
+                "sender_kyc":       txn.sender_kyc,
+                "txn_method":       txn.txn_method,
+                "device_id":        txn.device_id,
             }
             for txn in transactions
         ]
@@ -910,7 +986,8 @@ class DataIngestionService:
         
         stmt = (
             select(FraudRingSummary)
-            .where(FraudRingSummary.tenant_user_id == tenant_id)
+            .join(FraudRingSummary.batch)
+            .where(FileBatch.tenant_user_id == tenant_id)
             .order_by(desc(FraudRingSummary.risk_score))
             .limit(limit)
             .offset(offset)
@@ -921,13 +998,14 @@ class DataIngestionService:
         
         return [
             {
-                "ring_id": ring.ring_id,
-                "pattern_type": ring.pattern_type,
-                "member_count": ring.member_count,
-                "risk_score": float(ring.risk_score) if ring.risk_score else None,
+                "ring_id":       ring.ring_id,
+                "batch_id":      ring.batch_id,
+                "pattern_type":  ring.pattern_type,
+                "member_count":  ring.member_count,
+                "risk_score":    float(ring.risk_score) if ring.risk_score else None,
                 "risk_category": ring.risk_category,
                 "member_accounts": ring.member_accounts,
-                "created_at": ring.created_at.isoformat() if ring.created_at else None
+                "created_at":    ring.created_at.isoformat() if ring.created_at else None,
             }
             for ring in rings
         ]
@@ -953,21 +1031,25 @@ class DataIngestionService:
 
         from sqlalchemy import desc 
         
-        query = select(JSONStore).where(
-            JSONStore.tenant_user_id == tenant_id
-        ).order_by(
-            desc(JSONStore.uploaded_at)
-        ).limit(limit).offset(offset)
+        query = (
+            select(JSONStore)
+            .join(JSONStore.batch)
+            .where(FileBatch.tenant_user_id == tenant_id)
+            .order_by(desc(JSONStore.uploaded_at))
+            .limit(limit)
+            .offset(offset)
+        )
 
         result = await self.db.execute(query)
         reports = result.scalars().all()
         
         return [
             {
-                "id": report.id,
-                "filename": report.filename,
-                "json_data": report.json_data,
-                "uploaded_at": report.uploaded_at.isoformat() if report.uploaded_at else None
+                "id":          report.id,
+                "batch_id":    report.batch_id,
+                "filename":    report.filename,
+                "json_data":   report.json_data,
+                "uploaded_at": report.uploaded_at.isoformat() if report.uploaded_at else None,
             }
             for report in reports
         ]
@@ -990,9 +1072,13 @@ class DataIngestionService:
             JSON report data or None
         """
 
-        query = select(JSONStore).where(
-            JSONStore.id == report_id,
-            JSONStore.tenant_user_id == tenant_id
+        query = (
+            select(JSONStore)
+            .join(JSONStore.batch)
+            .where(
+                JSONStore.id == report_id,
+                FileBatch.tenant_user_id == tenant_id,
+            )
         )
         
         result = await self.db.execute(query)
@@ -1000,11 +1086,266 @@ class DataIngestionService:
         
         if report:
             return {
-                "id": report.id,
-                "filename": report.filename,
-                "json_data": report.json_data,
-                "uploaded_at": report.uploaded_at.isoformat() if report.uploaded_at else None
+                "id":          report.id,
+                "batch_id":    report.batch_id,
+                "filename":    report.filename,
+                "json_data":   report.json_data,
+                "uploaded_at": report.uploaded_at.isoformat() if report.uploaded_at else None,
             }
         
         return None
     
+
+    async def get_user_batches(
+        self,
+        tenant_id: str,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[Dict]:
+        """
+        Return all FileBatch rows owned by a tenant, newest first.
+        Each entry includes a summary pulled from the related JSONStore so
+        the caller can display a human-readable label (filename, ring count,
+        suspicious account count) next to the batch_id in a UI picker.
+
+        Args:
+            tenant_id: Owner UUID.
+            limit:     Page size.
+            offset:    Page offset.
+
+        Returns:
+            List of batch summary dicts.
+        """
+
+        from sqlalchemy import desc, func 
+
+        # count child rows per batch so we can show quick stats without pulling the heavy json_data column. 
+        txn_count_sq = (
+            select(
+                Transaction.batch_id,
+                func.count(Transaction.id).label("txn_count"),
+            )
+            .group_by(Transaction.batch_id)
+            .subquery()
+        )
+
+        ring_count_sq = (
+            select(
+                FraudRingSummary.batch_id,
+                func.count(FraudRingSummary.id).label("ring_count"),
+            )
+            .group_by(FraudRingSummary.batch_id)
+            .subquery()
+        )
+
+
+        stmt = (
+            select(
+                FileBatch,
+                JSONStore.filename,
+                txn_count_sq.c.txn_count,
+                ring_count_sq.c.ring_count
+            )
+            .where(FileBatch.tenant_user_id == tenant_id)
+            .outerjoin(JSONStore, JSONStore.batch_id==FileBatch.batch_id)
+            .outerjoin(txn_count_sq, txn_count_sq.c.batch_id  == FileBatch.batch_id)
+            .outerjoin(ring_count_sq, ring_count_sq.c.batch_id == FileBatch.batch_id)
+            .order_by(desc(FileBatch.uploaded_at))
+            .limit(limit)
+            .offset(offset)
+        )
+
+        result = await self.db.execute(stmt)
+        rows = result.all()
+
+        return [
+            {
+                "batch_id":           row.FileBatch.batch_id,
+                "uploaded_at":        row.FileBatch.uploaded_at.isoformat(),
+                "filename":           row.filename,                         # from JSONStore
+                "transaction_count":  row.txn_count  or 0,
+                "fraud_ring_count":   row.ring_count or 0,
+            }
+            for row in rows
+        ]
+    
+
+    async def _assert_batch_owned_by_tenant(
+        self, batch_id: str, tenant_id: str
+    ) -> FileBatch:
+        """
+        Load a FileBatch and verify it belongs to tenant_id.
+        Raises HTTP 404 if not found or not owned by the tenant.
+        """
+        result = await self.db.execute(
+            select(FileBatch).where(
+                FileBatch.batch_id        == batch_id,
+                FileBatch.tenant_user_id  == tenant_id,
+            )
+        )
+        batch = result.scalar_one_or_none()
+
+        if not batch:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Batch {batch_id} not found or does not belong to this user.",
+            )
+        return batch
+    
+
+    async def get_batch_transactions(
+        self,
+        tenant_id: str,
+        batch_id: str,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[Dict]:
+        """
+        Retrieve transactions for one specific upload batch.
+        Ownership is verified before querying.
+        """
+        from sqlalchemy import desc
+
+        await self._assert_batch_owned_by_tenant(batch_id, tenant_id)
+
+        stmt = (
+            select(Transaction)
+            .where(Transaction.batch_id == batch_id)
+            .order_by(desc(Transaction.timestamp))
+            .limit(limit)
+            .offset(offset)
+        )
+
+        result       = await self.db.execute(stmt)
+        transactions = result.scalars().all()
+
+        return [
+            {
+                "id":               txn.id,
+                "batch_id":         txn.batch_id,
+                "transaction_id":   txn.transaction_id,
+                "sender":           txn.sender,
+                "receiver":         txn.receiver,
+                "amount":           float(txn.amount) if txn.amount else None,
+                "timestamp":        txn.timestamp.isoformat() if txn.timestamp else None,
+                "sender_country":   txn.sender_country,
+                "receiver_country": txn.receiver_country,
+                "sender_kyc":       txn.sender_kyc,
+                "txn_method":       txn.txn_method,
+                "device_id":        txn.device_id,
+            }
+            for txn in transactions
+        ]
+
+
+    async def get_batch_fraud_rings(
+        self,
+        tenant_id: str,
+        batch_id: str,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[Dict]:
+        """
+        Retrieve fraud rings for one specific upload batch.
+        Ownership is verified before querying.
+        """
+        from sqlalchemy import desc
+
+        await self._assert_batch_owned_by_tenant(batch_id, tenant_id)
+
+        stmt = (
+            select(FraudRingSummary)
+            .where(FraudRingSummary.batch_id == batch_id)
+            .order_by(desc(FraudRingSummary.risk_score))
+            .limit(limit)
+            .offset(offset)
+        )
+
+        result = await self.db.execute(stmt)
+        rings  = result.scalars().all()
+
+        return [
+            {
+                "ring_id":         ring.ring_id,
+                "batch_id":        ring.batch_id,
+                "pattern_type":    ring.pattern_type,
+                "member_count":    ring.member_count,
+                "risk_score":      float(ring.risk_score) if ring.risk_score else None,
+                "risk_category":   ring.risk_category,
+                "member_accounts": ring.member_accounts,
+                "created_at":      ring.created_at.isoformat() if ring.created_at else None,
+            }
+            for ring in rings
+        ]
+    
+
+    async def get_batch_json_report(
+        self,
+        tenant_id: str,
+        batch_id: str,
+    ) -> Optional[Dict]:
+        """
+        Retrieve the JSON fraud report for one specific upload batch.
+        Ownership is verified before querying.
+        """
+        await self._assert_batch_owned_by_tenant(batch_id, tenant_id)
+
+        query = (
+            select(JSONStore)
+            .where(JSONStore.batch_id == batch_id)
+        )
+
+        result = await self.db.execute(query)
+        report = result.scalar_one_or_none()
+
+        if not report:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No JSON report found for batch {batch_id}.",
+            )
+
+        return {
+            "id":          report.id,
+            "batch_id":    report.batch_id,
+            "filename":    report.filename,
+            "json_data":   report.json_data,
+            "uploaded_at": report.uploaded_at.isoformat() if report.uploaded_at else None,
+        }
+    
+
+    async def delete_batch(
+        self,
+        tenant_id: str,
+        batch_id: str,
+    ) -> Dict:
+        """
+        Delete a FileBatch and all its children (transactions, fraud rings,
+        JSON report, FAISS index) via the CASCADE rules on the FK constraints.
+        Ownership is verified before deletion.
+
+        Returns:
+            Confirmation dict.
+        """
+        from sqlalchemy import delete
+
+        batch = await self._assert_batch_owned_by_tenant(batch_id, tenant_id)
+
+        try:
+            # Evict from FAISS cache before the DB row disappears
+            self.vector_store._index_cache.pop(batch_id, None)
+
+            await self.db.delete(batch)
+            await self.db.commit()
+
+            return {
+                "status":   "success",
+                "batch_id": batch_id,
+                "message":  f"Batch {batch_id} and all associated data deleted.",
+            }
+
+        except Exception as e:
+            await self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to delete batch {batch_id}: {e}",
+            )
