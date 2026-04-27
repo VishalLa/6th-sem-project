@@ -20,12 +20,20 @@
               <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
             </svg>
           </div>
-          <div>
+          <div class="chat-title-wrap">
             <p class="chat-title">Data Assistant</p>
-            <p class="chat-status">
+            <div style="display:flex; align-items:center; gap:6px; margin-top:2px;">
               <span class="status-dot" :class="{ ready: chatReady }" />
-              {{ chatReady ? 'Ready' : 'Initializing…' }}
-            </p>
+              <select v-if="batches.length > 0" v-model="selectedBatch" class="batch-select" @change="onBatchChange">
+                <option value="">Latest Upload</option>
+                <option v-for="b in batches" :key="b.batch_id" :value="b.batch_id">
+                  {{ b.original_filename || b.batch_id.slice(0,8) }}
+                </option>
+              </select>
+              <span v-else class="chat-status" style="margin:0;">
+                {{ chatReady ? 'Ready' : 'Initializing…' }}
+              </span>
+            </div>
           </div>
         </div>
         <button class="btn-icon" @click="clearChat" title="Clear chat">
@@ -126,7 +134,7 @@
 <script setup>
 import { ref, nextTick, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { chatbotQuery, chatbotDatasetInfo } from '@/services/api'
+import { chatbotQuery, chatbotDatasetInfo, getMyBatches } from '@/services/api'
 
 const router     = useRouter()
 
@@ -140,10 +148,30 @@ const msgContainer = ref(null)
 const inputEl    = ref(null)
 const sessionId  = `session_${Date.now()}`
 
+const batches = ref([])
+const selectedBatch = ref('')
+
 // Check health on mount
 onMounted(async () => {
-  try { await chatbotDatasetInfo(); chatReady.value = true } catch { chatReady.value = false }
+  try {
+    const res = await getMyBatches(100, 0)
+    batches.value = res.data?.batches || []
+  } catch (e) {
+    console.error('Failed to fetch batches', e)
+  }
+  try { await chatbotDatasetInfo(selectedBatch.value || null); chatReady.value = true } catch { chatReady.value = false }
 })
+
+async function onBatchChange() {
+  chatReady.value = false
+  messages.value = []
+  try {
+    await chatbotDatasetInfo(selectedBatch.value || null)
+    chatReady.value = true
+  } catch {
+    chatReady.value = false
+  }
+}
 
 function renderMd(text) {
   if (!text) return ''
@@ -182,7 +210,7 @@ async function send() {
   thinking.value = true
 
   try {
-    const res  = await chatbotQuery(q, sessionId)
+    const res  = await chatbotQuery(q, sessionId, selectedBatch.value || null)
     const data = res.data
     messages.value.push({
       role:       'bot',
@@ -259,9 +287,20 @@ function clearChat() {
 }
 .chat-avatar svg { width: 18px; height: 18px; }
 .chat-title  { font-size: 14px; font-weight: 700; }
-.chat-status { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
-.status-dot  { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); transition: background .3s; }
+.chat-status { font-size: 11px; color: var(--muted); }
+.status-dot  { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); transition: background .3s; display: inline-block;}
 .status-dot.ready { background: var(--low); animation: pulse 2s infinite; }
+
+.batch-select {
+  background: rgba(255,255,255,.05); border: 1px solid var(--border);
+  color: var(--text); border-radius: 4px; padding: 2px 4px;
+  font-size: 10px; font-family: var(--font-sans); cursor: pointer; outline: none; max-width: 130px; text-overflow: ellipsis; white-space: nowrap; overflow: hidden;
+}
+.batch-select:focus { border-color: var(--purple); }
+.batch-select option {
+  background: #1e1e2e; /* solid dark background for the dropdown menu */
+  color: #fff;
+}
 
 .btn-icon {
   background: transparent; border: 1px solid var(--border);

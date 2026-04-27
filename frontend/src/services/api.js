@@ -110,16 +110,23 @@ export const downloadFile     = (fileName) => API.get(`/download/json/${fileName
 export const downloadCSV      = (fileName) => API.get(`/download/csv/${fileName}`,  { responseType: 'blob' })
 
 // ── Chatbot ───────────────────────────────────────────────────────────────────
-export const chatbotQuery = (query, sessionId = 'default') =>
-  API.post('/chatbot/query', { query, session_id: sessionId, include_followup: true })
+export const chatbotQuery = (query, sessionId = 'default', batchId = null) => {
+  const payload = { query, session_id: sessionId, include_followup: true }
+  if (batchId) payload.batch_id = batchId
+  return API.post('/chatbot/query', payload)
+}
 
-export const chatbotDatasetInfo = () => API.get('/chatbot/dataset/info')
+export const chatbotDatasetInfo = (batchId = null) => {
+  return API.get('/chatbot/dataset/info', { params: batchId ? { batch_id: batchId } : {} })
+}
 
-export const chatbotResetSession = (sessionId = 'default') =>
-  API.post(`/chatbot/session/${sessionId}/reset`)
+export const chatbotResetSession = (sessionId = 'default', batchId = null) => {
+  return API.post(`/chatbot/session/${sessionId}/reset`, null, { params: batchId ? { batch_id: batchId } : {} })
+}
 
-export const getChatbotSession = (sessionId = 'default') =>
-  API.get(`/chatbot/session/${sessionId}`)
+export const getChatbotSession = (sessionId = 'default', batchId = null) => {
+  return API.get(`/chatbot/session/${sessionId}`, { params: batchId ? { batch_id: batchId } : {} })
+}
 
 export const clearChatbotCache = () =>
   API.delete('/chatbot/cache')

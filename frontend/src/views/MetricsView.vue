@@ -353,8 +353,8 @@ async function refresh() {
   try {
     // Load BOTH transactions AND fraud rings in parallel
     const [txRes, ringsRes] = await Promise.all([
-      getMyTransactions(1000, 0),
-      getMyFraudRings(500, 0),
+      getMyTransactions(100000, 0),
+      getMyFraudRings(10000, 0),
     ])
     const txList   = txRes.data?.transactions   || []
     const ringList = ringsRes.data?.fraud_rings || []

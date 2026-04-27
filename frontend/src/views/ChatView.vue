@@ -11,10 +11,18 @@
           </div>
           <div>
             <p class="conv-title">Data Assistant</p>
-            <p class="conv-status">
+            <div style="display:flex; align-items:center; gap:6px; margin-top:2px;">
               <span class="status-dot" :class="{ ready: chatReady }" />
-              {{ chatReady ? 'Ready' : 'Initializing…' }}
-            </p>
+              <select v-if="batches.length > 0" v-model="selectedBatch" class="batch-select" @change="onBatchChange">
+                <option value="">Latest Upload</option>
+                <option v-for="b in batches" :key="b.batch_id" :value="b.batch_id">
+                  {{ b.original_filename || b.batch_id.slice(0,8) }}
+                </option>
+              </select>
+              <span v-else class="conv-status" style="margin:0;">
+                {{ chatReady ? 'Ready' : 'Initializing…' }}
+              </span>
+            </div>
           </div>
         </div>
         <div class="conv-header-right">
@@ -227,7 +235,7 @@
 
 <script setup>
 import { ref, computed, nextTick, onMounted, watch } from 'vue'
-import { chatbotQuery, chatbotDatasetInfo } from "@/services/api"
+import { chatbotQuery, chatbotDatasetInfo, getMyBatches } from "@/services/api"
 
 // ── Chat state ────────────────────────────────────────────────────────────────
 const chatReady   = ref(false)
@@ -237,6 +245,9 @@ const messages    = ref([])
 const msgContainer = ref(null)
 const inputEl     = ref(null)
 const sessionId   = `session_${Date.now()}`
+
+const batches = ref([])
+const selectedBatch = ref('')
 
 const starters = [
   'How many transactions are there?',
@@ -253,7 +264,14 @@ const tableExamples = [
 ]
 
 onMounted(async () => {
-  try { await chatbotDatasetInfo(); chatReady.value = true } catch { chatReady.value = false }
+  try {
+    const res = await getMyBatches(100, 0)
+    batches.value = res.data?.batches || []
+  } catch (e) {
+    console.error('Failed to fetch batches', e)
+  }
+
+  try { await chatbotDatasetInfo(selectedBatch.value || null); chatReady.value = true } catch { chatReady.value = false }
 
   // Pick up table data forwarded from the floating sidebar
   try {
@@ -273,6 +291,18 @@ function renderMd(text) {
     .replace(/_(.*?)_/g, '<em>$1</em>')
     .replace(/`(.*?)`/g, '<code>$1</code>')
     .replace(/\n/g, '<br/>')
+}
+
+async function onBatchChange() {
+  chatReady.value = false
+  messages.value = []
+  clearTable()
+  try {
+    await chatbotDatasetInfo(selectedBatch.value || null)
+    chatReady.value = true
+  } catch {
+    chatReady.value = false
+  }
 }
 
 function confClass(c) {
@@ -303,7 +333,7 @@ async function send() {
   thinking.value = true
 
   try {
-    const res  = await chatbotQuery(q, sessionId)
+    const res  = await chatbotQuery(q, sessionId, selectedBatch.value || null)
     const data = res.data
     const tableRows = data.table_data || []
 
@@ -481,9 +511,20 @@ function exportCSV() {
 }
 .chat-avatar svg { width: 20px; height: 20px; }
 .conv-title  { font-size: 15px; font-weight: 700; }
-.conv-status { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 5px; margin-top: 2px; }
-.status-dot  { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); transition: background .3s; flex-shrink: 0; }
+.conv-status { font-size: 11px; color: var(--muted); }
+.status-dot  { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); transition: background .3s; flex-shrink: 0; display: inline-block; }
 .status-dot.ready { background: var(--low); animation: pulse 2s infinite; }
+
+.batch-select {
+  background: rgba(255,255,255,.05); border: 1px solid var(--border);
+  color: var(--text); border-radius: 4px; padding: 2px 4px;
+  font-size: 10px; font-family: var(--font-sans); cursor: pointer; outline: none; max-width: 140px; text-overflow: ellipsis; white-space: nowrap; overflow: hidden;
+}
+.batch-select:focus { border-color: var(--purple); }
+.batch-select option {
+  background: #1e1e2e; /* solid dark background for the dropdown menu */
+  color: #fff;
+}
 
 .conv-messages {
   flex: 1; overflow-y: auto;
