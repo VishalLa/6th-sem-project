@@ -43,7 +43,8 @@ class FraudDetectionChatbot:
         fraud_summary_df: Optional[pd.DataFrame] = None, 
         vector_store=None, 
         embeddings=None, 
-        default_tenant_id: str = "default"
+        default_tenant_id: str = "default",
+        default_batch_id=None
     ):
         """
         Initialize the chatbot.
@@ -57,6 +58,7 @@ class FraudDetectionChatbot:
         self.df = df
         self.fraud_summary_df = fraud_summary_df
         self.default_tenant_id = default_tenant_id
+        self.default_batch_id = default_batch_id
         
         self.data_executor = DataExecutor(df)
         self.fraud_executor = FraudSummaryExecutor(fraud_summary_df)
@@ -248,6 +250,7 @@ class FraudDetectionChatbot:
     def build_vector_db(
         self, 
         tenant_id: Optional[str] = None, 
+        batch_id: Optional[str] = None,
         force_rebuild: bool = False
     ) -> Dict:
 
@@ -258,8 +261,16 @@ class FraudDetectionChatbot:
             }
         
         tid = tenant_id or self.default_tenant_id
-        if not force_rebuild and self.vector_retriever.is_indexed(tid):
-            stats = self.vector_retriever.get_index_stats(tid)
+        bid = batch_id or self.default_batch_id
+
+        if not bid:
+            return {
+                "status": "error", 
+                "message": "No batch ID provided for vector indexing."
+            }
+        
+        if not force_rebuild and self.vector_retriever.is_indexed(tenant_id=tid, batch_id=bid):
+            stats = self.vector_retriever.get_index_stats(tenant_id=tid, batch_id=bid)
 
             return {
                 "status": "already_indexed", 
@@ -267,11 +278,17 @@ class FraudDetectionChatbot:
                 "total_documents": stats["total_documents"]
             }
         
-        stats = self.vector_retriever.index_dataframe(tenant_id=tid, df=self.df, document_type="transactions")
+        stats = self.vector_retriever.index_dataframe(
+            tenant_id=tid, 
+            batch_id=bid,
+            df=self.df, 
+            document_type="transactions"
+        )
         
         return {
             "status": "success", 
-            "documents_added": stats.get("documents_added"), "total_documents": stats.get("total_documents")
+            "documents_added": stats.get("documents_added"), 
+            "total_documents": stats.get("total_documents")
         }
     
 
